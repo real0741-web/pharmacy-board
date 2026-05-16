@@ -546,7 +546,8 @@ const SUPABASE_ANON = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFz
 ══════════════════════════════════════ */
 // 게시판 전용 Worker URL (pharmacy-board — Cloudflare Workers)
 const WORKER_URL   = 'https://pharmacy-board.speed0324.workers.dev';
-const isAdminMode  = new URLSearchParams(location.search).get('mode') === 'admin';
+const _urlAdminMode = new URLSearchParams(location.search).get('mode') === 'admin';
+let isAdminMode = false;   // 비밀번호 확인 후 true로 변경
 
 let sb = null;
 let currentUser = null;
@@ -564,7 +565,15 @@ let _uploadFiles = [null, null, null];  // 이미지 파일 3개
 ══════════════════════════════════════ */
 window.addEventListener('DOMContentLoaded', () => {
   sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON);
-  updateHeaderAuth(); // 인증 초기화 전에 즉시 헤더 렌더 (로그인 버튼 바로 표시)
+  // 관리자 모드: 비밀번호 확인
+  if (_urlAdminMode) {
+    if (sessionStorage.getItem('boardAdminVerified') === 'true') {
+      isAdminMode = true;
+    } else {
+      showAdminPwGate();
+    }
+  }
+  updateHeaderAuth();
   sb.auth.onAuthStateChange(async (_e, session) => {
     currentUser = session?.user || null;
     if (currentUser) { await loadProfile(); }
@@ -582,6 +591,7 @@ function showView(name) {
   document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
   document.getElementById('view-' + name).classList.add('active');
   window.scrollTo(0, 0);
+  if (name === 'settings') loadSettingsDrugList();
 }
 
 /* ══════════════════════════════════════
@@ -1001,7 +1011,11 @@ function updateHeaderAuth() {
   else             adminBadge.classList.add('hidden');
   if (currentUser) {
     const name = (currentProfile && currentProfile.pharmacy_name) || (currentUser.email ? currentUser.email.split('@')[0] : '약사');
+    const settingsBtn = isAdminMode
+      ? '<button onclick="showView(\'settings\')" title="설정" class="text-lg leading-none hover:opacity-70 transition-opacity" style="background:none;border:none;cursor:pointer;">⚙️</button>'
+      : '';
     el.innerHTML = '<span class="text-xs text-slate-500 hidden sm:block">' + name + '</span>'
+      + settingsBtn
       + '<button onclick="signOut()" class="text-xs font-semibold text-slate-500 border border-slate-200 px-3 py-1.5 rounded-xl hover:bg-slate-50">로그아웃</button>';
     if (isAdminMode) {
       aiBtn.classList.remove('hidden');
@@ -1368,6 +1382,244 @@ async function runBatchRegister() {
   analyzeBtn.disabled = false;
   await loadDrugs();
 }
+
+/* ══════════════════════════════════════
+   관리자 비밀번호 게이트 (Supabase 저장 — 기기 무관)
+══════════════════════════════════════ */
+async function getAdminPw() {
+  try {
+    const { data } = await sb.from('board_settings').select('value').eq('key', 'admin_password').single();
+    if (data && data.value) return data.value;
+  } catch(e) {}
+  return 'admin1234'; // 테이블 없을 때 폴백
+}
+
+function showAdminPwGate() {
+  document.getElementById('admin-pw-gate').classList.remove('hidden');
+}
+
+async function submitAdminPwGate() {
+  const input  = document.getElementById('gate-pw-input').value;
+  const errEl  = document.getElementById('gate-pw-error');
+  const btn    = document.getElementById('gate-pw-btn');
+  errEl.classList.add('hidden');
+  btn.disabled = true; btn.textContent = '확인 중...';
+  const saved = await getAdminPw();
+  btn.disabled = false; btn.textContent = '입장';
+  if (input === saved) {
+    sessionStorage.setItem('boardAdminVerified', 'true');
+    isAdminMode = true;
+    document.getElementById('admin-pw-gate').classList.add('hidden');
+    updateHeaderAuth();
+    showToast('관리자 모드로 입장했습니다.');
+  } else {
+    errEl.classList.remove('hidden');
+    errEl.textContent = '비밀번호가 올바르지 않습니다.';
+    document.getElementById('gate-pw-input').value = '';
+  }
+}
+
+/* ══════════════════════════════════════
+   설정 뷰
+══════════════════════════════════════ */
+async function openSettingsView() {
+  showView('settings');
+  await loadSettingsDrugList();
+}
+
+async function loadSettingsDrugList() {
+  const el = document.getElementById('settings-drug-list');
+  el.innerHTML = '<div class="text-slate-400 text-sm py-4 text-center animate-pulse">불러오는 중...</div>';
+  const { data, error } = await sb.from('drugs').select('*').order('created_at', { ascending: false });
+  if (error || !data) { el.innerHTML = '<div class="text-red-400 text-sm">로드 실패</div>'; return; }
+  if (data.length === 0) { el.innerHTML = '<div class="text-slate-400 text-sm py-4 text-center">등록된 약품이 없습니다.</div>'; return; }
+  el.innerHTML = '';
+  data.forEach(function(drug) {
+    const row = document.createElement('div');
+    row.className = 'flex items-center gap-3 py-2.5 border-b border-slate-50 last:border-0';
+    row.id = 'settings-drug-row-' + drug.id;
+    row.innerHTML =
+      '<span class="text-xl shrink-0">' + (drug.emoji || '💊') + '</span>' +
+      '<div class="flex-1 min-w-0">' +
+        '<div class="text-sm font-semibold text-slate-800 truncate">' + drug.canonical_name + '</div>' +
+        '<div class="text-xs text-slate-400">' + drug.manufacturer_name + ' · ' + (drug.version_count || 0) + '개 버전</div>' +
+      '</div>' +
+      '<button onclick="aiGenerateVersion(\'' + drug.id + '\',\'' + drug.canonical_name.replace(/'/g,'\\\'') + '\',\'' + drug.manufacturer_name + '\')"' +
+        ' class="text-xs font-bold px-3 py-1.5 rounded-lg border border-teal-300 text-teal-600 hover:bg-teal-50 transition-all shrink-0" id="ai-ver-btn-' + drug.id + '">' +
+        '🤖 AI 버전 생성' +
+      '</button>';
+    el.appendChild(row);
+  });
+}
+
+async function aiGenerateVersion(drugId, drugName, mfr) {
+  if (!currentUser) { showToast('로그인이 필요합니다.'); return; }
+  const btn = document.getElementById('ai-ver-btn-' + drugId);
+  btn.disabled = true; btn.textContent = '생성 중...';
+  try {
+    const resp = await fetch(WORKER_URL, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'analyzeDrugBoard', drugName: drugName, manufacturer: mfr })
+    });
+    const result = await resp.json();
+    if (result.error) throw new Error(result.error);
+    const { error } = await sb.from('drug_versions').insert({
+      drug_id: drugId, user_id: currentUser.id,
+      pharmacy_name: (currentProfile && currentProfile.pharmacy_name) || '관리자',
+      image_url: result.image_url || null,
+      efficacy: result.efficacy || '', dosage: result.dosage || '',
+      pharmacist_note: result.pharmacist_note || null,
+    });
+    if (error) throw new Error(error.message);
+    btn.textContent = '✅ 완료';
+    btn.classList.add('bg-teal-50');
+    btn.disabled = false;
+    showToast('"' + drugName + '" AI 버전 생성 완료!');
+    loadDrugs();
+  } catch(e) {
+    btn.disabled = false; btn.textContent = '❌ 재시도';
+    showToast('실패: ' + e.message);
+  }
+}
+
+async function aiGenerateAllVersions() {
+  if (!currentUser) { showToast('로그인이 필요합니다.'); return; }
+  const btn = document.getElementById('ai-all-ver-btn');
+  btn.disabled = true; btn.textContent = '⏳ 전체 생성 중...';
+  const { data } = await sb.from('drugs').select('id,canonical_name,manufacturer_name,version_count').order('created_at', { ascending: false });
+  if (!data || data.length === 0) { btn.disabled = false; btn.textContent = '🤖 버전 없는 약품 전체 AI 생성'; return; }
+  const targets = data.filter(function(d){ return (d.version_count || 0) === 0; });
+  if (targets.length === 0) { showToast('버전 없는 약품이 없습니다.'); btn.disabled = false; btn.textContent = '🤖 버전 없는 약품 전체 AI 생성'; return; }
+  for (var i = 0; i < targets.length; i++) {
+    const d = targets[i];
+    const rowBtn = document.getElementById('ai-ver-btn-' + d.id);
+    if (rowBtn) { rowBtn.disabled = true; rowBtn.textContent = '처리 중...'; }
+    try {
+      const resp = await fetch(WORKER_URL, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'analyzeDrugBoard', drugName: d.canonical_name, manufacturer: d.manufacturer_name })
+      });
+      const result = await resp.json();
+      if (!result.error) {
+        await sb.from('drug_versions').insert({
+          drug_id: d.id, user_id: currentUser.id,
+          pharmacy_name: (currentProfile && currentProfile.pharmacy_name) || '관리자',
+          image_url: result.image_url || null,
+          efficacy: result.efficacy || '', dosage: result.dosage || '',
+          pharmacist_note: result.pharmacist_note || null,
+        });
+        if (rowBtn) { rowBtn.textContent = '✅ 완료'; rowBtn.disabled = false; }
+      }
+    } catch(e) {
+      if (rowBtn) { rowBtn.textContent = '❌ 실패'; rowBtn.disabled = false; }
+    }
+    if (i < targets.length - 1) await new Promise(function(r){ setTimeout(r, 900); });
+  }
+  btn.disabled = false; btn.textContent = '🤖 버전 없는 약품 전체 AI 생성';
+  showToast('전체 AI 버전 생성 완료!');
+  loadDrugs();
+  loadSettingsDrugList();
+}
+
+async function changeAdminPw() {
+  const cur   = document.getElementById('pw-change-cur').value;
+  const newPw = document.getElementById('pw-change-new').value;
+  const errEl = document.getElementById('pw-change-error');
+  const btn   = document.getElementById('pw-change-btn');
+  errEl.classList.add('hidden');
+  if (newPw.length < 4) { errEl.textContent = '새 비밀번호는 4자 이상이어야 합니다.'; errEl.classList.remove('hidden'); return; }
+  btn.disabled = true; btn.textContent = '저장 중...';
+  const saved = await getAdminPw();
+  if (cur !== saved) {
+    errEl.textContent = '현재 비밀번호가 틀렸습니다.';
+    errEl.classList.remove('hidden');
+    btn.disabled = false; btn.textContent = '변경하기'; return;
+  }
+  const { error } = await sb.from('board_settings').upsert({ key: 'admin_password', value: newPw, updated_at: new Date().toISOString() });
+  btn.disabled = false; btn.textContent = '변경하기';
+  if (error) { errEl.textContent = '저장 실패: ' + error.message; errEl.classList.remove('hidden'); return; }
+  document.getElementById('pw-change-cur').value = '';
+  document.getElementById('pw-change-new').value = '';
+  showToast('✅ 비밀번호가 변경되었습니다. 모든 기기에 즉시 적용됩니다.');
+}
 </script>
+
+<!-- ══════════════════════════════════════
+     MODAL: 관리자 비밀번호 게이트
+══════════════════════════════════════ -->
+<div id="admin-pw-gate" class="hidden fixed inset-0 z-[100] modal-bg flex items-center justify-center p-4">
+  <div class="bg-white rounded-2xl shadow-2xl w-full max-w-xs p-6 fade-in">
+    <div class="text-center mb-5">
+      <div class="text-4xl mb-2">🔐</div>
+      <h2 class="text-lg font-extrabold text-slate-800">관리자 모드</h2>
+      <p class="text-xs text-slate-400 mt-1">비밀번호를 입력해주세요</p>
+    </div>
+    <input id="gate-pw-input" type="password" placeholder="비밀번호"
+      class="w-full border border-slate-200 rounded-xl px-4 py-3 text-sm mb-2 focus:outline-none focus:border-teal-500"
+      onkeydown="if(event.key==='Enter') submitAdminPwGate()"/>
+    <div id="gate-pw-error" class="hidden text-xs text-red-500 mb-2 text-center"></div>
+    <button id="gate-pw-btn" onclick="submitAdminPwGate()" class="btn-primary w-full py-2.5 text-sm">입장</button>
+    <button onclick="history.back()" class="w-full mt-2 text-xs text-slate-400 hover:text-slate-600 py-1">취소</button>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════
+     VIEW: 설정
+══════════════════════════════════════ -->
+<div id="view-settings" class="view">
+  <div class="max-w-2xl mx-auto px-4 pt-4 pb-20">
+    <button onclick="showView('list')" class="text-xs text-slate-400 hover:text-slate-600 mb-4 flex items-center gap-1">← 게시판으로</button>
+    <h1 class="text-xl font-extrabold text-slate-800 mb-6">⚙️ 관리자 설정</h1>
+
+    <!-- 비밀번호 변경 -->
+    <div class="bg-white rounded-2xl border border-slate-100 shadow-sm p-5 mb-4">
+      <h2 class="font-extrabold text-slate-700 mb-4 flex items-center gap-2">🔑 관리자 비밀번호 변경</h2>
+      <div class="space-y-2 mb-3">
+        <input id="pw-change-cur" type="password" placeholder="현재 비밀번호"
+          class="w-full border border-slate-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-teal-500"/>
+        <input id="pw-change-new" type="password" placeholder="새 비밀번호 (4자 이상)"
+          class="w-full border border-slate-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-teal-500"/>
+      </div>
+      <div id="pw-change-error" class="hidden text-xs text-red-500 mb-2"></div>
+      <button id="pw-change-btn" onclick="changeAdminPw()" class="btn-primary px-5 py-2 text-sm">변경하기</button>
+      <p class="text-xs text-slate-400 mt-2">기본 비밀번호: admin1234 · Supabase에 저장 → 모든 기기 동일 적용</p>
+    </div>
+
+    <!-- AI 버전 자동 생성 -->
+    <div class="bg-white rounded-2xl border border-slate-100 shadow-sm p-5 mb-4">
+      <div class="flex items-center justify-between mb-1">
+        <h2 class="font-extrabold text-slate-700 flex items-center gap-2">🤖 약품별 AI 버전 자동 생성</h2>
+        <button id="ai-all-ver-btn" onclick="aiGenerateAllVersions()"
+          class="text-xs font-bold px-3 py-2 rounded-xl bg-teal-600 text-white hover:bg-teal-700 transition-all shrink-0">
+          🤖 버전 없는 약품 전체 AI 생성
+        </button>
+      </div>
+      <p class="text-xs text-slate-400 mb-4">약품에 버전(설명)이 없으면 키오스크에서 다운로드할 수 없어요. AI가 자동으로 효능·용법·약사한마디를 채워드립니다.</p>
+      <div id="settings-drug-list" class="divide-y divide-slate-50">
+        <div class="text-slate-400 text-sm py-4 text-center">설정 페이지를 열면 자동으로 로드됩니다.</div>
+      </div>
+    </div>
+
+    <!-- 게시판 URL 안내 -->
+    <div class="bg-white rounded-2xl border border-slate-100 shadow-sm p-5">
+      <h2 class="font-extrabold text-slate-700 mb-3 flex items-center gap-2">🔗 게시판 URL 안내</h2>
+      <div class="space-y-2 text-sm">
+        <div class="flex items-center gap-2 bg-slate-50 rounded-xl px-4 py-3">
+          <span class="text-xs font-bold text-slate-500 shrink-0">일반</span>
+          <code class="text-teal-700 text-xs flex-1 break-all">https://real0741-web.github.io/pharmacy-board/</code>
+          <button onclick="navigator.clipboard.writeText('https://real0741-web.github.io/pharmacy-board/').then(function(){showToast('복사됨!')})"
+            class="text-xs text-slate-400 hover:text-teal-600 shrink-0">복사</button>
+        </div>
+        <div class="flex items-center gap-2 bg-amber-50 rounded-xl px-4 py-3">
+          <span class="text-xs font-bold text-amber-600 shrink-0">관리자</span>
+          <code class="text-amber-700 text-xs flex-1 break-all">https://real0741-web.github.io/pharmacy-board/?mode=admin</code>
+          <button onclick="navigator.clipboard.writeText('https://real0741-web.github.io/pharmacy-board/?mode=admin').then(function(){showToast('복사됨!')})"
+            class="text-xs text-slate-400 hover:text-amber-600 shrink-0">복사</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
 </body>
 </html>
