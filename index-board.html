@@ -567,7 +567,7 @@ window.addEventListener('DOMContentLoaded', () => {
   sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON);
   // 관리자 모드: 비밀번호 확인
   if (_urlAdminMode) {
-    if (sessionStorage.getItem('boardAdminVerified') === 'true') {
+    if (localStorage.getItem('boardAdminVerified') === 'true') {
       isAdminMode = true;
     } else {
       showAdminPwGate();
@@ -582,6 +582,29 @@ window.addEventListener('DOMContentLoaded', () => {
   });
   loadDrugs();
   syncAuthUI();
+  // 북마클릿에서 넘어온 URL 자동 처리 (?scrape=URL)
+  const _scrapeUrl = new URLSearchParams(location.search).get('scrape');
+  window._pendingScrapeUrl = _scrapeUrl || null;  // 비밀번호 입력 후에도 접근 가능하도록 전역 저장
+  if (_scrapeUrl) {
+    // 인증 및 어드민 모드 준비 후 모달 오픈 (최대 30초 대기 — 비밀번호 입력 시간 포함)
+    var _scrapeRetry = 0;
+    var _scrapeTimer = setInterval(function() {
+      _scrapeRetry++;
+      if ((currentUser && isAdminMode) || _scrapeRetry > 150) {
+        clearInterval(_scrapeTimer);
+        if (currentUser && isAdminMode) {
+          openAIRegisterModal();
+          switchAITab('url');
+          var urlEl = document.getElementById('ai-page-url');
+          if (urlEl) urlEl.value = decodeURIComponent(_scrapeUrl);
+          showToast('URL이 자동으로 입력되었습니다. AI 분석을 시작하세요!');
+        } else if (!currentUser) {
+          openAuth();
+          showToast('로그인 후 AI 스크래핑을 사용하세요.');
+        }
+      }
+    }, 200);
+  }
 });
 
 /* ══════════════════════════════════════
@@ -1407,11 +1430,27 @@ async function submitAdminPwGate() {
   const saved = await getAdminPw();
   btn.disabled = false; btn.textContent = '입장';
   if (input === saved) {
-    sessionStorage.setItem('boardAdminVerified', 'true');
+    localStorage.setItem('boardAdminVerified', 'true');
     isAdminMode = true;
     document.getElementById('admin-pw-gate').classList.add('hidden');
     updateHeaderAuth();
     showToast('관리자 모드로 입장했습니다.');
+    // 북마클릿으로 열린 경우 → 비밀번호 확인 즉시 모달 오픈
+    const _su = window._pendingScrapeUrl;
+    if (_su) {
+      if (currentUser) {
+        setTimeout(function() {
+          openAIRegisterModal();
+          switchAITab('url');
+          const urlEl = document.getElementById('ai-page-url');
+          if (urlEl) urlEl.value = decodeURIComponent(_su);
+          showToast('URL이 자동으로 입력되었습니다. AI 분석을 시작하세요!');
+        }, 300);
+      } else {
+        openAuth();
+        showToast('로그인 후 AI 스크래핑이 시작됩니다.');
+      }
+    }
   } else {
     errEl.classList.remove('hidden');
     errEl.textContent = '비밀번호가 올바르지 않습니다.';
