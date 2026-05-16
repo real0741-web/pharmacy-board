@@ -822,15 +822,552 @@ async function downloadVersion(versionId) {
 }
 
 /* ══════════════════════════════════════
+/* ══════════════════════════════════════
    버전 등록 모달
 ══════════════════════════════════════ */
 function openVersionUpload(prefill) {
   if (!currentUser) { openAuth(); return; }
   if (!currentDrug) return;
-
-  document.getElementById('vm-title').textContent    = '버전 등록';
+  document.getElementById('vm-title').textContent     = '버전 등록';
   document.getElementById('vm-drug-name').textContent = currentDrug.canonical_name;
   document.getElementById('vm-drug-id').value         = currentDrug.id;
   document.getElementById('vm-version-id').value      = '';
   document.getElementById('vm-efficacy').value        = prefill?.efficacy || '';
-  document.getElementById('vm-dosage').value          = prefill?.do
+  document.getElementById('vm-dosage').value          = prefill?.dosage || '';
+  document.getElementById('vm-note').value            = prefill?.pharmacist_note || '';
+  _uploadFiles = [null, null, null];
+  [1,2,3].forEach(i => {
+    const p = document.getElementById('img-preview-'+i);
+    p.innerHTML = i===1 ? '📦' : '+';
+    document.getElementById('img-file-'+i).value = '';
+  });
+  document.getElementById('vm-img-url-1').value = prefill?.image_url || '';
+  if (prefill?.image_url) previewUrlImage(1);
+  document.getElementById('vm-error').classList.add('hidden');
+  document.getElementById('version-modal').classList.remove('hidden');
+}
+
+function closeVersionModal() {
+  document.getElementById('version-modal').classList.add('hidden');
+}
+
+async function submitVersion() {
+  const btn    = document.getElementById('vm-submit-btn');
+  const errEl  = document.getElementById('vm-error');
+  const drugId    = document.getElementById('vm-drug-id').value;
+  const versionId = document.getElementById('vm-version-id').value;
+  const efficacy  = document.getElementById('vm-efficacy').value.trim();
+  const dosage    = document.getElementById('vm-dosage').value.trim();
+  const note      = document.getElementById('vm-note').value.trim();
+  const imgUrl1   = document.getElementById('vm-img-url-1').value.trim();
+  errEl.classList.add('hidden');
+  if (!efficacy || !dosage) {
+    errEl.textContent = '효능과 용법은 필수입니다.';
+    errEl.classList.remove('hidden'); return;
+  }
+  btn.disabled = true; btn.textContent = '등록 중...';
+  let uploadedUrls = [imgUrl1, '', ''];
+  for (let i = 0; i < 3; i++) {
+    if (_uploadFiles[i]) {
+      const file = _uploadFiles[i];
+      const ext  = file.name.split('.').pop();
+      const path = currentUser.id + '/' + Date.now() + '_' + i + '.' + ext;
+      const { error: upErr } = await sb.storage.from('drug-images').upload(path, file, { upsert: true });
+      if (!upErr) {
+        const { data: urlData } = sb.storage.from('drug-images').getPublicUrl(path);
+        uploadedUrls[i] = urlData.publicUrl;
+      }
+    }
+  }
+  const payload = {
+    drug_id: drugId, user_id: currentUser.id,
+    pharmacy_name: currentProfile?.pharmacy_name || '익명약국',
+    image_url: uploadedUrls[0]||null, image_url_2: uploadedUrls[1]||null, image_url_3: uploadedUrls[2]||null,
+    efficacy, dosage, pharmacist_note: note||null,
+  };
+  let error;
+  if (versionId) { ({ error } = await sb.from('drug_versions').update(payload).eq('id', versionId)); }
+  else           { ({ error } = await sb.from('drug_versions').insert(payload)); }
+  btn.disabled = false; btn.textContent = '등록하기';
+  if (error) { errEl.textContent = '오류: ' + error.message; errEl.classList.remove('hidden'); return; }
+  closeVersionModal();
+  showToast('버전이 등록되었습니다!');
+  if (currentDrug) loadVersions(currentDrug.id);
+}
+
+async function editVersion(versionId) {
+  const { data, error } = await sb.from('drug_versions').select('*').eq('id', versionId).single();
+  if (error || !data) { showToast('버전 데이터를 불러올 수 없습니다.'); return; }
+  openVersionUpload(data);
+  document.getElementById('vm-title').textContent = '버전 수정';
+  document.getElementById('vm-version-id').value  = versionId;
+}
+
+async function deleteVersion(versionId) {
+  if (!confirm('이 버전을 삭제하시겠습니까?')) return;
+  const { error } = await sb.from('drug_versions').delete().eq('id', versionId);
+  if (error) { showToast('삭제 실패: ' + error.message); return; }
+  showToast('버전이 삭제되었습니다.');
+  if (currentDrug) loadVersions(currentDrug.id);
+}
+
+async function copyVersionToNew(versionId) {
+  const { data, error } = await sb.from('drug_versions').select('*').eq('id', versionId).single();
+  if (error || !data) { showToast('버전 데이터를 불러올 수 없습니다.'); return; }
+  if (!currentUser) { openAuth(); return; }
+  openVersionUpload({ efficacy: data.efficacy, dosage: data.dosage, pharmacist_note: data.pharmacist_note, image_url: data.image_url });
+  document.getElementById('vm-version-id').value = '';
+}
+
+function handleFileUpload(idx, event) {
+  const file = event.target.files[0];
+  if (!file) return;
+  _uploadFiles[idx - 1] = file;
+  const reader = new FileReader();
+  reader.onload = function(e) {
+    const p = document.getElementById('img-preview-'+idx);
+    p.innerHTML = '<img src="' + e.target.result + '" class="w-full h-full object-cover"/>';
+  };
+  reader.readAsDataURL(file);
+}
+
+function previewUrlImage(idx) {
+  const urlEl = document.getElementById('vm-img-url-' + idx);
+  if (!urlEl) return;
+  const url = urlEl.value.trim();
+  const p   = document.getElementById('img-preview-' + idx);
+  if (!p) return;
+  if (url) { p.innerHTML = '<img src="' + url + '" class="w-full h-full object-cover" onerror="this.parentElement.innerHTML=\'❌\'"/>'; }
+  else     { p.innerHTML = idx === 1 ? '📦' : '+'; }
+}
+
+function openImageFull(url) {
+  const overlay = document.createElement('div');
+  overlay.style.cssText = 'position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,.85);display:flex;align-items:center;justify-content:center;cursor:pointer;';
+  overlay.onclick = function() { document.body.removeChild(overlay); };
+  overlay.innerHTML = '<img src="' + url + '" style="max-width:90vw;max-height:90vh;border-radius:12px;object-fit:contain;"/>';
+  document.body.appendChild(overlay);
+}
+
+/* ══════════════════════════════════════
+   필터 & 검색
+══════════════════════════════════════ */
+function setMfrFilter(val, btn) {
+  currentMfr = val;
+  document.querySelectorAll('[data-mfr]').forEach(function(b){ b.classList.remove('active'); });
+  btn.classList.add('active');
+  renderDrugs();
+}
+
+function setCatFilter(val, btn) {
+  currentCat = val;
+  document.querySelectorAll('[data-cat]').forEach(function(b){ b.classList.remove('active'); });
+  btn.classList.add('active');
+  renderDrugs();
+}
+
+function setSort(val, btn) {
+  currentSort = val;
+  document.querySelectorAll('.sort-btn').forEach(function(b){ b.classList.remove('active'); });
+  btn.classList.add('active');
+  renderDrugs();
+}
+
+function onSearch() {
+  searchQuery = document.getElementById('search-input').value;
+  renderDrugs();
+}
+
+/* ══════════════════════════════════════
+   토스트
+══════════════════════════════════════ */
+function showToast(msg, duration) {
+  duration = duration || 2800;
+  const el = document.getElementById('toast');
+  el.textContent = msg;
+  el.classList.add('show');
+  setTimeout(function(){ el.classList.remove('show'); }, duration);
+}
+
+/* ══════════════════════════════════════
+   헤더 인증 UI
+══════════════════════════════════════ */
+function updateHeaderAuth() {
+  const el         = document.getElementById('header-auth');
+  const adminBadge = document.getElementById('admin-badge');
+  const aiBtn      = document.getElementById('ai-register-btn');
+  const uploadBtn  = document.getElementById('upload-btn');
+  if (isAdminMode) adminBadge.classList.remove('hidden');
+  else             adminBadge.classList.add('hidden');
+  if (currentUser) {
+    const name = (currentProfile && currentProfile.pharmacy_name) || (currentUser.email ? currentUser.email.split('@')[0] : '약사');
+    el.innerHTML = '<span class="text-xs text-slate-500 hidden sm:block">' + name + '</span>'
+      + '<button onclick="signOut()" class="text-xs font-semibold text-slate-500 border border-slate-200 px-3 py-1.5 rounded-xl hover:bg-slate-50">로그아웃</button>';
+    if (isAdminMode) {
+      aiBtn.classList.remove('hidden');
+      uploadBtn.classList.remove('hidden');
+    } else {
+      aiBtn.classList.add('hidden');
+      uploadBtn.classList.add('hidden');
+    }
+  } else {
+    el.innerHTML = '<button onclick="openAuth()" class="btn-primary px-4 py-1.5 text-sm">로그인</button>';
+    aiBtn.classList.add('hidden');
+    uploadBtn.classList.add('hidden');
+  }
+}
+
+function syncAuthUI() {}
+
+/* ══════════════════════════════════════
+   인증 모달
+══════════════════════════════════════ */
+var _authMode = 'login';
+
+function openAuth() {
+  _authMode = 'login';
+  document.getElementById('auth-title').textContent       = '로그인';
+  document.getElementById('auth-submit-btn').textContent  = '로그인';
+  document.getElementById('auth-toggle-text').textContent = '계정이 없으신가요?';
+  document.getElementById('auth-toggle-btn').textContent  = '회원가입';
+  document.getElementById('pharmacy-field').classList.add('hidden');
+  document.getElementById('auth-email').value    = '';
+  document.getElementById('auth-pw').value       = '';
+  document.getElementById('auth-pharmacy').value = '';
+  document.getElementById('auth-error').classList.add('hidden');
+  document.getElementById('auth-modal').classList.remove('hidden');
+}
+
+function closeAuth() {
+  document.getElementById('auth-modal').classList.add('hidden');
+}
+
+function toggleAuthMode() {
+  _authMode = _authMode === 'login' ? 'signup' : 'login';
+  var isSignup = _authMode === 'signup';
+  document.getElementById('auth-title').textContent       = isSignup ? '회원가입' : '로그인';
+  document.getElementById('auth-submit-btn').textContent  = isSignup ? '회원가입' : '로그인';
+  document.getElementById('auth-toggle-text').textContent = isSignup ? '이미 계정이 있으신가요?' : '계정이 없으신가요?';
+  document.getElementById('auth-toggle-btn').textContent  = isSignup ? '로그인' : '회원가입';
+  document.getElementById('pharmacy-field').classList.toggle('hidden', !isSignup);
+  document.getElementById('auth-error').classList.add('hidden');
+}
+
+async function submitAuth() {
+  const btn   = document.getElementById('auth-submit-btn');
+  const errEl = document.getElementById('auth-error');
+  const email    = document.getElementById('auth-email').value.trim();
+  const pw       = document.getElementById('auth-pw').value;
+  const pharmacy = document.getElementById('auth-pharmacy').value.trim();
+  errEl.classList.add('hidden');
+  if (!email || !pw) {
+    errEl.textContent = '이메일과 비밀번호를 입력해주세요.';
+    errEl.classList.remove('hidden'); return;
+  }
+  btn.disabled = true; btn.textContent = '처리 중...';
+  var result;
+  if (_authMode === 'signup') {
+    if (!pharmacy) {
+      errEl.textContent = '약국명을 입력해주세요.';
+      errEl.classList.remove('hidden');
+      btn.disabled = false; btn.textContent = '회원가입'; return;
+    }
+    result = await sb.auth.signUp({ email: email, password: pw, options: { data: { pharmacy_name: pharmacy } } });
+  } else {
+    result = await sb.auth.signInWithPassword({ email: email, password: pw });
+  }
+  btn.disabled = false;
+  btn.textContent = _authMode === 'signup' ? '회원가입' : '로그인';
+  if (result.error) {
+    const msg = result.error.message;
+    errEl.textContent = msg.includes('Invalid login') ? '이메일 또는 비밀번호가 올바르지 않습니다.' : msg;
+    errEl.classList.remove('hidden'); return;
+  }
+  if (_authMode === 'signup' && !(result.data && result.data.session)) {
+    errEl.style.color = '#0d9488';
+    errEl.textContent = '가입 완료! 이메일 인증 후 로그인해주세요.';
+    errEl.classList.remove('hidden'); return;
+  }
+  closeAuth();
+  showToast('로그인 되었습니다!');
+}
+
+async function signOut() {
+  await sb.auth.signOut();
+  showToast('로그아웃 되었습니다.');
+}
+
+/* ══════════════════════════════════════
+   새 약품 등록 모달 (관리자)
+══════════════════════════════════════ */
+function openNewDrugModal() {
+  if (!currentUser) { openAuth(); return; }
+  document.getElementById('nd-name').value  = '';
+  document.getElementById('nd-emoji').value = '💊';
+  document.getElementById('nd-mfr').value   = '';
+  document.getElementById('nd-cat').value   = '';
+  document.getElementById('nd-tags').value  = '';
+  document.getElementById('nd-error').classList.add('hidden');
+  document.getElementById('new-drug-modal').classList.remove('hidden');
+}
+
+function closeNewDrugModal() {
+  document.getElementById('new-drug-modal').classList.add('hidden');
+}
+
+async function submitNewDrug() {
+  const btn   = document.getElementById('nd-submit-btn');
+  const errEl = document.getElementById('nd-error');
+  const name  = document.getElementById('nd-name').value.trim();
+  const emoji = document.getElementById('nd-emoji').value.trim() || '💊';
+  const mfr   = document.getElementById('nd-mfr').value;
+  const cat   = document.getElementById('nd-cat').value;
+  const tags  = document.getElementById('nd-tags').value.split(',').map(function(t){ return t.trim(); }).filter(Boolean);
+  errEl.classList.add('hidden');
+  if (!name) { errEl.textContent = '약품명을 입력해주세요.'; errEl.classList.remove('hidden'); return; }
+  if (!mfr)  { errEl.textContent = '제약사를 선택해주세요.'; errEl.classList.remove('hidden'); return; }
+  if (!cat)  { errEl.textContent = '카테고리를 선택해주세요.'; errEl.classList.remove('hidden'); return; }
+  btn.disabled = true; btn.textContent = '등록 중...';
+  const { data, error } = await sb.from('drugs').insert({
+    canonical_name: name, emoji: emoji, manufacturer_name: mfr, category: cat, func_tags: tags,
+  }).select().single();
+  btn.disabled = false; btn.textContent = '다음 — 버전 등록 →';
+  if (error) { errEl.textContent = '오류: ' + error.message; errEl.classList.remove('hidden'); return; }
+  closeNewDrugModal();
+  showToast('약품 등록 완료! 이제 버전을 올려보세요.');
+  await loadDrugs();
+  if (data) openDrugDetail(data);
+}
+
+/* ══════════════════════════════════════
+   AI 등록 모달
+══════════════════════════════════════ */
+var _aiCurrentTab = 'name';
+
+function openAIRegisterModal() {
+  if (!currentUser) { openAuth(); return; }
+  document.getElementById('ai-register-modal').classList.remove('hidden');
+  document.getElementById('ai-step-1').classList.remove('hidden');
+  document.getElementById('ai-step-2').classList.add('hidden');
+  switchAITab('name');
+}
+
+function closeAIRegisterModal() {
+  document.getElementById('ai-register-modal').classList.add('hidden');
+}
+
+function switchAITab(tab) {
+  _aiCurrentTab = tab;
+  ['name','url','batch'].forEach(function(t) {
+    const btn   = document.getElementById('tab-'+t+'-btn');
+    const panel = document.getElementById('ai-tab-'+t);
+    if (t === tab) {
+      btn.classList.add('bg-white','text-slate-700','shadow-sm');
+      btn.classList.remove('text-slate-400');
+      panel.classList.remove('hidden');
+    } else {
+      btn.classList.remove('bg-white','text-slate-700','shadow-sm');
+      btn.classList.add('text-slate-400');
+      panel.classList.add('hidden');
+    }
+  });
+  const analyzeBtn = document.getElementById('ai-analyze-btn');
+  analyzeBtn.textContent = tab === 'batch' ? '📋 일괄 등록 시작' : '🔍 AI로 정보 채우기';
+}
+
+function previewAIImage() {
+  const url  = document.getElementById('ai-image-url').value.trim();
+  const wrap  = document.getElementById('ai-img-preview');
+  const thumb = document.getElementById('ai-img-thumb');
+  if (url) { thumb.src = url; wrap.style.display = 'flex'; }
+  else     { wrap.style.display = 'none'; }
+}
+
+async function runAIAnalysis() {
+  const errEl      = document.getElementById('ai-step1-error');
+  const analyzeBtn = document.getElementById('ai-analyze-btn');
+  errEl.classList.add('hidden');
+  var drugName, mfr, imageUrl, pageUrl;
+  if (_aiCurrentTab === 'name') {
+    drugName = document.getElementById('ai-drug-name').value.trim();
+    mfr      = document.getElementById('ai-mfr').value;
+    imageUrl = document.getElementById('ai-image-url').value.trim();
+    if (!drugName) { errEl.textContent = '약품명을 입력해주세요.'; errEl.classList.remove('hidden'); return; }
+    if (!mfr)      { errEl.textContent = '제약사를 선택해주세요.'; errEl.classList.remove('hidden'); return; }
+  } else {
+    pageUrl = document.getElementById('ai-page-url').value.trim();
+    if (!pageUrl) { errEl.textContent = 'URL을 입력해주세요.'; errEl.classList.remove('hidden'); return; }
+  }
+  analyzeBtn.disabled = true; analyzeBtn.textContent = '🔍 분석 중...';
+  try {
+    var result;
+    if (_aiCurrentTab === 'name') {
+      const resp = await fetch(WORKER_URL, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'analyzeDrugBoard', drugName: drugName, manufacturer: mfr })
+      });
+      result = await resp.json();
+    } else {
+      const resp = await fetch(WORKER_URL, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'scrapePharmaSite', url: pageUrl })
+      });
+      result = await resp.json();
+      if (result.drug_name)    drugName = result.drug_name;
+      if (result.manufacturer) mfr      = result.manufacturer;
+      if (result.image_url)    imageUrl  = result.image_url;
+    }
+    if (!result || result.error) throw new Error(result ? result.error : '분석 실패');
+    document.getElementById('ai-step-1').classList.add('hidden');
+    document.getElementById('ai-step-2').classList.remove('hidden');
+    document.getElementById('ai-result-name').value     = drugName || result.drug_name || '';
+    document.getElementById('ai-result-emoji').value    = result.emoji || '💊';
+    document.getElementById('ai-result-tags').value     = (result.func_tags || []).join(', ');
+    document.getElementById('ai-result-efficacy').value = result.efficacy || '';
+    document.getElementById('ai-result-dosage').value   = result.dosage || '';
+    document.getElementById('ai-result-note').value     = result.pharmacist_note || '';
+    const mfrSel = document.getElementById('ai-result-mfr');
+    if (mfr) { for (var o of mfrSel.options) { if (o.value === mfr) { mfrSel.value = mfr; break; } } }
+    const catSel = document.getElementById('ai-result-cat');
+    if (result.category) { for (var o of catSel.options) { if (o.value === result.category) { catSel.value = result.category; break; } } }
+    const badge = document.getElementById('ai-source-badge');
+    const src   = result._source || '';
+    if (src.includes('식약처') || src.includes('mfds')) {
+      badge.textContent = '식약처'; badge.className = 'text-xs font-bold px-2 py-0.5 rounded-full bg-blue-100 text-blue-700';
+    } else if (src.includes('scrap') || src.includes('네이버')) {
+      badge.textContent = '스크래핑'; badge.className = 'text-xs font-bold px-2 py-0.5 rounded-full bg-purple-100 text-purple-700';
+    } else {
+      badge.textContent = 'AI 생성'; badge.className = 'text-xs font-bold px-2 py-0.5 rounded-full bg-amber-100 text-amber-700';
+    }
+    const finalImg = imageUrl || result.image_url || '';
+    document.getElementById('ai-image-url').value = finalImg;
+    if (finalImg) {
+      document.getElementById('ai-step2-img').src              = finalImg;
+      document.getElementById('ai-step2-img-url').textContent  = finalImg;
+      document.getElementById('ai-step2-img-wrap').classList.remove('hidden');
+    } else {
+      document.getElementById('ai-step2-img-wrap').classList.add('hidden');
+    }
+  } catch(e) {
+    errEl.textContent = '분석 실패: ' + e.message;
+    errEl.classList.remove('hidden');
+  }
+  analyzeBtn.disabled = false; analyzeBtn.textContent = '🔍 AI로 정보 채우기';
+}
+
+async function submitAIRegister(continueMode) {
+  continueMode = continueMode || false;
+  const btn   = document.getElementById('ai-submit-btn');
+  const errEl = document.getElementById('ai-step2-error');
+  errEl.classList.add('hidden');
+  const name     = document.getElementById('ai-result-name').value.trim();
+  const mfr      = document.getElementById('ai-result-mfr').value;
+  const emoji    = document.getElementById('ai-result-emoji').value.trim() || '💊';
+  const cat      = document.getElementById('ai-result-cat').value;
+  const tags     = document.getElementById('ai-result-tags').value.split(',').map(function(t){ return t.trim(); }).filter(Boolean);
+  const efficacy = document.getElementById('ai-result-efficacy').value.trim();
+  const dosage   = document.getElementById('ai-result-dosage').value.trim();
+  const note     = document.getElementById('ai-result-note').value.trim();
+  const imageUrl = document.getElementById('ai-image-url').value.trim();
+  if (!name || !efficacy || !dosage) {
+    errEl.textContent = '약품명, 효능, 용법은 필수입니다.'; errEl.classList.remove('hidden'); return;
+  }
+  btn.disabled = true; btn.textContent = '등록 중...';
+  const { data: drugData, error: drugErr } = await sb.from('drugs').insert({
+    canonical_name: name, emoji: emoji, manufacturer_name: mfr, category: cat, func_tags: tags,
+  }).select().single();
+  if (drugErr) {
+    errEl.textContent = '약품 등록 오류: ' + drugErr.message;
+    errEl.classList.remove('hidden'); btn.disabled = false; btn.textContent = '등록하기'; return;
+  }
+  const { error: verErr } = await sb.from('drug_versions').insert({
+    drug_id: drugData.id, user_id: currentUser.id,
+    pharmacy_name: (currentProfile && currentProfile.pharmacy_name) || '관리자',
+    image_url: imageUrl || null, efficacy: efficacy, dosage: dosage, pharmacist_note: note || null,
+  });
+  btn.disabled = false; btn.textContent = '등록하기';
+  if (verErr) { errEl.textContent = '버전 등록 오류: ' + verErr.message; errEl.classList.remove('hidden'); return; }
+  showToast('"' + name + '" 등록 완료!');
+  await loadDrugs();
+  if (continueMode) {
+    document.getElementById('ai-step-1').classList.remove('hidden');
+    document.getElementById('ai-step-2').classList.add('hidden');
+    document.getElementById('ai-drug-name').value = '';
+    document.getElementById('ai-image-url').value = '';
+    document.getElementById('ai-img-preview').style.display = 'none';
+    document.getElementById('ai-step1-error').classList.add('hidden');
+    switchAITab('name');
+  } else { closeAIRegisterModal(); }
+}
+
+/* ══════════════════════════════════════
+   일괄 등록
+══════════════════════════════════════ */
+async function runBatchRegister() {
+  const raw = document.getElementById('batch-drug-list').value.trim();
+  const defaultMfr = document.getElementById('batch-default-mfr').value;
+  const lines = raw.split('\n').map(function(l){ return l.trim(); }).filter(Boolean);
+  if (lines.length === 0) { showToast('약품명을 입력해주세요.'); return; }
+  const logEl        = document.getElementById('batch-log');
+  const progressWrap = document.getElementById('batch-progress-wrap');
+  const progressBar  = document.getElementById('batch-progress-bar');
+  const progressLabel= document.getElementById('batch-progress-label');
+  const progressPct  = document.getElementById('batch-progress-pct');
+  const analyzeBtn   = document.getElementById('ai-analyze-btn');
+  logEl.classList.remove('hidden');
+  progressWrap.classList.remove('hidden');
+  logEl.innerHTML = '';
+  analyzeBtn.disabled = true;
+  var success = 0, fail = 0;
+  function log(msg, color) {
+    const span = document.createElement('div');
+    span.style.color = color || '#94a3b8';
+    span.textContent = msg;
+    logEl.appendChild(span);
+    logEl.scrollTop = logEl.scrollHeight;
+  }
+  for (var i = 0; i < lines.length; i++) {
+    const parts    = lines[i].split('|');
+    const drugName = parts[0].trim();
+    const mfr      = (parts[1] || defaultMfr).trim();
+    const pct      = Math.round((i / lines.length) * 100);
+    progressBar.style.width   = pct + '%';
+    progressLabel.textContent = '(' + (i+1) + '/' + lines.length + ') ' + drugName;
+    progressPct.textContent   = pct + '%';
+    log('⏳ [' + (i+1) + '/' + lines.length + '] ' + drugName + ' 분석 중...');
+    try {
+      const resp = await fetch(WORKER_URL, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'analyzeDrugBoard', drugName: drugName, manufacturer: mfr })
+      });
+      const result = await resp.json();
+      if (result.error) throw new Error(result.error);
+      const { data: drugData, error: drugErr } = await sb.from('drugs').insert({
+        canonical_name: drugName, emoji: result.emoji || '💊',
+        manufacturer_name: mfr, category: result.category || '기타', func_tags: result.func_tags || [],
+      }).select().single();
+      if (drugErr) throw new Error(drugErr.message);
+      await sb.from('drug_versions').insert({
+        drug_id: drugData.id, user_id: currentUser.id,
+        pharmacy_name: (currentProfile && currentProfile.pharmacy_name) || '관리자',
+        efficacy: result.efficacy || '', dosage: result.dosage || '',
+        pharmacist_note: result.pharmacist_note || null,
+      });
+      log('✅ ' + drugName + ' 등록 완료', '#4ade80');
+      success++;
+    } catch(e) {
+      log('❌ ' + drugName + ' 실패: ' + e.message, '#f87171');
+      fail++;
+    }
+    if (i < lines.length - 1) { await new Promise(function(r){ setTimeout(r, 800); }); }
+  }
+  progressBar.style.width   = '100%';
+  progressPct.textContent   = '100%';
+  progressLabel.textContent = '완료! 성공 ' + success + '개, 실패 ' + fail + '개';
+  log('🎉 완료! 성공 ' + success + '개, 실패 ' + fail + '개', '#ffffff');
+  analyzeBtn.disabled = false;
+  await loadDrugs();
+}
+</script>
+</body>
+</html>
