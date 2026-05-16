@@ -1,0 +1,836 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1.0,maximum-scale=1.0"/>
+<title>약품 공유 게시판 · 로컬약국 네트워크</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+<style>
+  html,body{font-family:-apple-system,BlinkMacSystemFont,'Apple SD Gothic Neo','Malgun Gothic','Segoe UI',sans-serif;}
+  :root{--brand:#0d9488;--brand-dark:#0f766e;--brand-soft:#ccfbf1;}
+  .no-scrollbar::-webkit-scrollbar{display:none}.no-scrollbar{-ms-overflow-style:none;scrollbar-width:none}
+  @keyframes fade{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:translateY(0)}}
+  .fade-in{animation:fade .2s ease-out;}
+  .modal-bg{background:rgba(15,23,42,.55);backdrop-filter:blur(4px);}
+  input:focus,textarea:focus,select:focus{outline:none;border-color:var(--brand)!important;box-shadow:0 0 0 3px var(--brand-soft);}
+  .btn-primary{background:var(--brand);color:white;font-weight:700;border-radius:10px;transition:opacity .15s;border:none;cursor:pointer;}
+  .btn-primary:hover{opacity:.88;}
+  .btn-secondary{background:#f1f5f9;color:#334155;font-weight:600;border-radius:10px;border:none;cursor:pointer;}
+  .chip{display:inline-block;padding:5px 13px;border-radius:20px;font-size:12px;font-weight:700;border:1.5px solid #e2e8f0;background:white;color:#64748b;cursor:pointer;white-space:nowrap;transition:all .15s;}
+  .chip.active{background:var(--brand);color:white;border-color:var(--brand);}
+  .card{background:white;border:1.5px solid #e2e8f0;border-radius:14px;transition:box-shadow .15s,transform .15s,border-color .15s;cursor:pointer;}
+  .card:hover{box-shadow:0 4px 18px rgba(15,23,42,.08);transform:translateY(-2px);border-color:#94a3b8;}
+  .field{margin-bottom:13px;}
+  .field label{display:block;font-size:12px;font-weight:700;color:#475569;margin-bottom:5px;}
+  .field input,.field textarea,.field select{width:100%;border:1.5px solid #e2e8f0;border-radius:10px;padding:9px 12px;font-size:14px;font-family:inherit;}
+  .toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%) translateY(80px);background:#1e293b;color:white;padding:12px 22px;border-radius:12px;font-size:14px;font-weight:600;z-index:9999;transition:transform .3s ease;}
+  .toast.show{transform:translateX(-50%) translateY(0);}
+  .ver-item{border:1.5px solid #e2e8f0;border-radius:12px;overflow:hidden;transition:border-color .15s;}
+  .ver-item.open{border-color:var(--brand);}
+  .ver-preview{display:none;padding:12px 14px;background:#f8fafc;border-top:1px solid #f1f5f9;}
+  .ver-item.open .ver-preview{display:block;}
+  .sort-btn{padding:5px 13px;border-radius:18px;font-size:12px;font-weight:700;border:1.5px solid #e2e8f0;background:white;color:#64748b;cursor:pointer;transition:all .15s;}
+  .sort-btn.active{background:var(--brand);color:white;border-color:var(--brand);}
+  /* 뷰 전환 */
+  .view{display:none;}.view.active{display:block;}
+</style>
+</head>
+<body class="bg-slate-50 min-h-screen">
+<div id="toast" class="toast"></div>
+
+<!-- ══════════════════════════════════════
+     HEADER
+══════════════════════════════════════ -->
+<header class="sticky top-0 z-40 bg-white border-b border-slate-100 shadow-sm">
+  <div class="max-w-5xl mx-auto px-4 py-3 flex items-center gap-3">
+    <button onclick="showView('list')" class="flex items-center gap-2 shrink-0">
+      <span class="text-xl">💊</span>
+      <div class="text-left">
+        <div class="font-extrabold text-slate-800 text-sm leading-tight">약품 공유 게시판</div>
+        <div class="text-xs text-slate-400 hidden sm:block">로컬약국 네트워크</div>
+      </div>
+    </button>
+    <div class="flex-1 relative">
+      <span class="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-sm pointer-events-none">🔍</span>
+      <input id="search-input" type="search" placeholder="약품명 검색..."
+        class="w-full pl-8 pr-4 py-2 rounded-xl border border-slate-200 bg-slate-50 text-sm focus:bg-white"
+        oninput="onSearch()"/>
+    </div>
+    <div id="header-auth" class="shrink-0 flex items-center gap-2"></div>
+  </div>
+</header>
+
+<!-- ══════════════════════════════════════
+     VIEW: LIST (메인 목록)
+══════════════════════════════════════ -->
+<div id="view-list" class="view active">
+  <!-- HERO -->
+  <div class="bg-gradient-to-r from-teal-700 to-teal-500 text-white">
+    <div class="max-w-5xl mx-auto px-4 py-5 flex items-center justify-between gap-4">
+      <div>
+        <div class="flex items-center gap-2 mb-0.5">
+          <h1 class="font-extrabold text-lg sm:text-xl">약사들이 함께 만드는 약품 DB</h1>
+          <span id="admin-badge" class="hidden text-xs font-bold bg-yellow-400 text-yellow-900 px-2 py-0.5 rounded-full">관리자</span>
+        </div>
+        <p class="text-teal-100 text-sm mt-0.5">버전별로 올리고, 마음에 드는 버전을 골라 내 키오스크에 적용하세요</p>
+      </div>
+      <div class="flex items-center gap-2 shrink-0">
+        <button id="ai-register-btn" onclick="openAIRegisterModal()"
+          class="hidden bg-teal-900 bg-opacity-50 text-white font-bold px-3 py-2 rounded-xl text-sm border border-teal-400 border-opacity-50 hover:bg-opacity-80 transition-all">
+          🤖 AI 등록
+        </button>
+        <button id="upload-btn" onclick="openNewDrugModal()"
+          class="hidden shrink-0 bg-white text-teal-700 font-bold px-4 py-2 rounded-xl text-sm shadow hover:shadow-md transition-all">
+          + 약품 등록
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 제약사 필터 -->
+  <div class="max-w-5xl mx-auto px-4 pt-3">
+    <div class="flex gap-2 overflow-x-auto no-scrollbar pb-1">
+      <button class="chip active" data-mfr="all" onclick="setMfrFilter('all',this)">🏪 전체</button>
+      <button class="chip" data-mfr="동아제약"  onclick="setMfrFilter('동아제약',this)">동아제약</button>
+      <button class="chip" data-mfr="한미약품"  onclick="setMfrFilter('한미약품',this)">한미약품</button>
+      <button class="chip" data-mfr="종근당"    onclick="setMfrFilter('종근당',this)">종근당</button>
+      <button class="chip" data-mfr="유한양행"  onclick="setMfrFilter('유한양행',this)">유한양행</button>
+      <button class="chip" data-mfr="보령제약"  onclick="setMfrFilter('보령제약',this)">보령제약</button>
+      <button class="chip" data-mfr="광동제약"  onclick="setMfrFilter('광동제약',this)">광동제약</button>
+      <button class="chip" data-mfr="기타"      onclick="setMfrFilter('기타',this)">기타</button>
+    </div>
+  </div>
+
+  <!-- 기능 태그 필터 -->
+  <div class="max-w-5xl mx-auto px-4 pt-1.5">
+    <div class="flex gap-2 overflow-x-auto no-scrollbar pb-2">
+      <button class="chip active" style="font-size:11px;padding:4px 11px;" data-cat="all" onclick="setCatFilter('all',this)">전체 효능</button>
+      <button class="chip" style="font-size:11px;padding:4px 11px;" data-cat="소화기"      onclick="setCatFilter('소화기',this)">🫀 소화기</button>
+      <button class="chip" style="font-size:11px;padding:4px 11px;" data-cat="통증·감기"   onclick="setCatFilter('통증·감기',this)">🤒 통증·감기</button>
+      <button class="chip" style="font-size:11px;padding:4px 11px;" data-cat="눈·피부"     onclick="setCatFilter('눈·피부',this)">👁️ 눈·피부</button>
+      <button class="chip" style="font-size:11px;padding:4px 11px;" data-cat="비타민·영양제" onclick="setCatFilter('비타민·영양제',this)">💊 비타민·영양제</button>
+      <button class="chip" style="font-size:11px;padding:4px 11px;" data-cat="상비약"      onclick="setCatFilter('상비약',this)">🩹 상비약</button>
+      <button class="chip" style="font-size:11px;padding:4px 11px;" data-cat="기타"        onclick="setCatFilter('기타',this)">📦 기타</button>
+    </div>
+  </div>
+
+  <!-- 정렬 + 카운트 -->
+  <div class="max-w-5xl mx-auto px-4 py-2 flex items-center gap-2">
+    <span class="text-xs text-slate-400 font-semibold shrink-0">정렬</span>
+    <button class="sort-btn active" data-sort="downloads" onclick="setSort('downloads',this)">다운로드순</button>
+    <button class="sort-btn" data-sort="versions"   onclick="setSort('versions',this)">버전많은순</button>
+    <button class="sort-btn" data-sort="latest"     onclick="setSort('latest',this)">최신순</button>
+    <span id="drug-count" class="ml-auto text-xs text-slate-400"></span>
+  </div>
+
+  <!-- 약품 목록 -->
+  <main class="max-w-5xl mx-auto px-4 pb-16">
+    <div id="drug-grid" class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3"></div>
+    <div id="empty-state" class="hidden text-center py-20 text-slate-400">
+      <div class="text-5xl mb-3">💊</div>
+      <div class="font-semibold">등록된 약품이 없습니다</div>
+      <div class="text-sm mt-1">첫 번째로 약품을 등록해보세요!</div>
+    </div>
+    <div id="loading-state" class="text-center py-20 text-slate-400">
+      <div class="text-4xl mb-3 animate-pulse">⏳</div>
+      <div class="text-sm">불러오는 중...</div>
+    </div>
+  </main>
+</div>
+
+<!-- ══════════════════════════════════════
+     VIEW: DETAIL (약품 상세 + 버전 목록)
+══════════════════════════════════════ -->
+<div id="view-detail" class="view">
+  <div class="max-w-2xl mx-auto px-4 pt-4 pb-16">
+    <!-- 약품 헤더 -->
+    <div id="detail-header" class="bg-white rounded-2xl border border-slate-100 shadow-sm p-5 mb-4 fade-in">
+      <button onclick="showView('list')" class="text-xs text-slate-400 hover:text-slate-600 mb-3 flex items-center gap-1">← 목록으로</button>
+      <div class="flex items-start gap-4">
+        <div id="detail-img-wrap" class="w-20 h-20 rounded-xl overflow-hidden bg-slate-100 shrink-0 flex items-center justify-center">
+          <span id="detail-emoji-big" class="text-4xl">💊</span>
+        </div>
+        <div class="flex-1 min-w-0">
+          <div id="detail-drug-name" class="text-xl font-extrabold text-slate-900 leading-tight"></div>
+          <div id="detail-drug-mfr" class="text-sm text-slate-400 mt-0.5"></div>
+          <div id="detail-drug-tags" class="flex flex-wrap gap-1.5 mt-2"></div>
+        </div>
+      </div>
+      <div class="flex items-center gap-3 mt-4 pt-3 border-t border-slate-50">
+        <div class="text-center">
+          <div id="detail-ver-count" class="text-lg font-extrabold text-teal-600"></div>
+          <div class="text-xs text-slate-400">버전</div>
+        </div>
+        <div class="w-px h-8 bg-slate-100"></div>
+        <div class="text-center">
+          <div id="detail-dl-count" class="text-lg font-extrabold text-slate-700"></div>
+          <div class="text-xs text-slate-400">총 다운로드</div>
+        </div>
+        <div class="flex-1"></div>
+        <button onclick="openVersionUpload()" id="add-version-btn"
+          class="hidden btn-primary px-4 py-2 text-sm">+ 내 버전 등록</button>
+      </div>
+    </div>
+
+    <!-- 버전 목록 -->
+    <div class="text-xs font-bold text-slate-400 uppercase tracking-wider mb-2 px-1">버전 목록 — 다운로드 순</div>
+    <div id="version-list" class="flex flex-col gap-3 fade-in"></div>
+    <div id="ver-loading" class="text-center py-10 text-slate-400 text-sm animate-pulse">버전 불러오는 중...</div>
+    <div id="ver-empty" class="hidden text-center py-10">
+      <div class="text-3xl mb-2">📝</div>
+      <div class="text-sm text-slate-400">아직 등록된 버전이 없어요</div>
+      <button onclick="openVersionUpload()" class="btn-primary px-5 py-2 text-sm mt-3">첫 버전 등록하기</button>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════
+     MODAL: 인증
+══════════════════════════════════════ -->
+<div id="auth-modal" class="hidden fixed inset-0 z-50 modal-bg flex items-center justify-center p-4">
+  <div class="bg-white rounded-2xl shadow-2xl w-full max-w-sm p-6 fade-in">
+    <div class="flex items-center justify-between mb-5">
+      <h2 class="text-lg font-extrabold" id="auth-title">로그인</h2>
+      <button onclick="closeAuth()" class="w-8 h-8 rounded-full bg-slate-100 text-slate-500 text-sm">✕</button>
+    </div>
+    <div class="field" id="pharmacy-field">
+      <label>약국명</label>
+      <input id="auth-pharmacy" type="text" placeholder="예: 한빛약국"/>
+    </div>
+    <div class="field">
+      <label>이메일</label>
+      <input id="auth-email" type="email" placeholder="pharmacy@email.com"/>
+    </div>
+    <div class="field">
+      <label>비밀번호</label>
+      <input id="auth-pw" type="password" placeholder="6자 이상"/>
+    </div>
+    <div id="auth-error" class="hidden text-xs text-red-500 mb-3 p-2 bg-red-50 rounded-lg"></div>
+    <button onclick="submitAuth()" class="btn-primary w-full py-2.5 mb-3" id="auth-submit-btn">로그인</button>
+    <div class="text-center text-sm text-slate-500">
+      <span id="auth-toggle-text">계정이 없으신가요?</span>
+      <button onclick="toggleAuthMode()" class="text-teal-600 font-semibold ml-1" id="auth-toggle-btn">회원가입</button>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════
+     MODAL: 새 약품 등록 (마스터)
+══════════════════════════════════════ -->
+<div id="new-drug-modal" class="hidden fixed inset-0 z-50 modal-bg flex items-center justify-center p-4">
+  <div class="bg-white rounded-2xl shadow-2xl w-full max-w-md p-6 fade-in max-h-[92vh] overflow-y-auto">
+    <div class="flex items-center justify-between mb-4">
+      <h2 class="text-lg font-extrabold">새 약품 등록</h2>
+      <button onclick="closeNewDrugModal()" class="w-8 h-8 rounded-full bg-slate-100 text-slate-500 text-sm">✕</button>
+    </div>
+    <div class="text-xs text-slate-400 bg-slate-50 rounded-lg p-3 mb-4 leading-relaxed">
+      약품의 기본 정보(이름·제약사·카테고리)를 등록합니다.<br/>
+      사진·설명·약사한마디는 다음 단계에서 내 버전으로 올립니다.
+    </div>
+    <div class="grid grid-cols-[64px_1fr] gap-3 mb-3">
+      <div class="field mb-0">
+        <label>이모지</label>
+        <input id="nd-emoji" type="text" maxlength="2" placeholder="💊"
+          style="text-align:center;font-size:1.5rem;padding:6px;border:1.5px solid #e2e8f0;border-radius:10px;width:100%;"/>
+      </div>
+      <div class="field mb-0">
+        <label>약품명 <span class="text-red-400">*</span></label>
+        <input id="nd-name" type="text" placeholder="예: 타이레놀 이알 서방정"/>
+      </div>
+    </div>
+    <div class="field">
+      <label>제약사 <span class="text-red-400">*</span></label>
+      <select id="nd-mfr">
+        <option value="">선택해주세요</option>
+        <option>동아제약</option><option>한미약품</option><option>종근당</option>
+        <option>유한양행</option><option>보령제약</option><option>광동제약</option>
+        <option>한국얀센</option><option>GSK</option><option>기타</option>
+      </select>
+    </div>
+    <div class="field">
+      <label>카테고리 <span class="text-red-400">*</span></label>
+      <select id="nd-cat">
+        <option value="">선택해주세요</option>
+        <option>소화기</option><option>통증·감기</option><option>눈·피부</option>
+        <option>비타민·영양제</option><option>상비약</option><option>기타</option>
+      </select>
+    </div>
+    <div class="field">
+      <label>기능 태그 <span class="text-slate-400 font-normal">(쉼표로 구분)</span></label>
+      <input id="nd-tags" type="text" placeholder="예: 두통, 해열, 진통"/>
+    </div>
+    <div id="nd-error" class="hidden text-xs text-red-500 mb-3 p-2 bg-red-50 rounded-lg"></div>
+    <div class="grid grid-cols-2 gap-2">
+      <button onclick="closeNewDrugModal()" class="btn-secondary py-2.5">취소</button>
+      <button onclick="submitNewDrug()" class="btn-primary py-2.5" id="nd-submit-btn">다음 — 버전 등록 →</button>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════
+     MODAL: 버전 등록/수정
+══════════════════════════════════════ -->
+<div id="version-modal" class="hidden fixed inset-0 z-50 modal-bg flex items-center justify-center p-4">
+  <div class="bg-white rounded-2xl shadow-2xl w-full max-w-lg p-6 fade-in max-h-[92vh] overflow-y-auto">
+    <div class="flex items-center justify-between mb-4">
+      <div>
+        <h2 class="text-lg font-extrabold" id="vm-title">버전 등록</h2>
+        <div id="vm-drug-name" class="text-xs text-slate-400 mt-0.5"></div>
+      </div>
+      <button onclick="closeVersionModal()" class="w-8 h-8 rounded-full bg-slate-100 text-slate-500 text-sm">✕</button>
+    </div>
+
+    <input type="hidden" id="vm-drug-id"/>
+    <input type="hidden" id="vm-version-id"/>
+
+    <!-- 이미지 섹션 -->
+    <div class="field">
+      <label>📦 박스 사진 (제약사 공식 이미지 URL 또는 직접 업로드)</label>
+      <div class="grid grid-cols-3 gap-2 mb-2">
+        <div>
+          <div id="img-preview-1" class="w-full aspect-square rounded-xl border-2 border-dashed border-slate-200 flex items-center justify-center text-2xl bg-slate-50 overflow-hidden cursor-pointer" onclick="document.getElementById('img-file-1').click()">📦</div>
+          <input id="img-file-1" type="file" accept="image/*" class="hidden" onchange="handleFileUpload(1,event)"/>
+        </div>
+        <div>
+          <div id="img-preview-2" class="w-full aspect-square rounded-xl border-2 border-dashed border-slate-200 flex items-center justify-center text-2xl bg-slate-50 overflow-hidden cursor-pointer" onclick="document.getElementById('img-file-2').click()">+</div>
+          <input id="img-file-2" type="file" accept="image/*" class="hidden" onchange="handleFileUpload(2,event)"/>
+        </div>
+        <div>
+          <div id="img-preview-3" class="w-full aspect-square rounded-xl border-2 border-dashed border-slate-200 flex items-center justify-center text-2xl bg-slate-50 overflow-hidden cursor-pointer" onclick="document.getElementById('img-file-3').click()">+</div>
+          <input id="img-file-3" type="file" accept="image/*" class="hidden" onchange="handleFileUpload(3,event)"/>
+        </div>
+      </div>
+      <!-- URL 입력 (제약사 공식 이미지 링크) -->
+      <input id="vm-img-url-1" type="url" placeholder="또는 제약사 공식 제품 이미지 URL 붙여넣기"
+        style="border:1.5px solid #e2e8f0;border-radius:10px;padding:8px 12px;font-size:13px;width:100%;"
+        oninput="previewUrlImage(1)"/>
+    </div>
+
+    <div class="field">
+      <label>⚕️ 효능·효과 <span class="text-red-400">*</span></label>
+      <textarea id="vm-efficacy" rows="3" placeholder="예: 두통, 치통, 근육통, 생리통, 관절통 완화"
+        style="border:1.5px solid #e2e8f0;border-radius:10px;padding:9px 12px;font-size:14px;width:100%;resize:vertical;"></textarea>
+    </div>
+    <div class="field">
+      <label>💉 용법·용량 <span class="text-red-400">*</span></label>
+      <textarea id="vm-dosage" rows="2" placeholder="예: 1회 1~2정, 1일 2~3회, 4~6시간 간격 복용"
+        style="border:1.5px solid #e2e8f0;border-radius:10px;padding:9px 12px;font-size:14px;width:100%;resize:vertical;"></textarea>
+    </div>
+    <div class="field">
+      <label>💬 약사 한마디 <span class="text-slate-400 font-normal">(선택)</span></label>
+      <textarea id="vm-note" rows="2" placeholder="예: 식후 복용 권장. 위가 약하신 분께 특히 추천"
+        style="border:1.5px solid #e2e8f0;border-radius:10px;padding:9px 12px;font-size:14px;width:100%;resize:vertical;"></textarea>
+    </div>
+
+    <div id="vm-error" class="hidden text-xs text-red-500 mb-3 p-2 bg-red-50 rounded-lg"></div>
+    <div class="grid grid-cols-2 gap-2">
+      <button onclick="closeVersionModal()" class="btn-secondary py-2.5">취소</button>
+      <button onclick="submitVersion()" class="btn-primary py-2.5" id="vm-submit-btn">등록하기</button>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════
+     MODAL: AI 빠른 등록
+══════════════════════════════════════ -->
+<div id="ai-register-modal" class="hidden fixed inset-0 z-50 modal-bg flex items-center justify-center p-4">
+  <div class="bg-white rounded-2xl shadow-2xl w-full max-w-md p-6 fade-in max-h-[92vh] overflow-y-auto">
+    <div class="flex items-center justify-between mb-4">
+      <div>
+        <h2 class="text-lg font-extrabold">🤖 AI 빠른 등록</h2>
+        <p class="text-xs text-slate-400 mt-0.5">약품명 입력 또는 제약사 페이지 URL로 자동 등록</p>
+      </div>
+      <button onclick="closeAIRegisterModal()" class="w-8 h-8 rounded-full bg-slate-100 text-slate-500 text-sm">✕</button>
+    </div>
+
+    <!-- 탭 전환 -->
+    <div class="flex rounded-xl bg-slate-100 p-1 mb-4">
+      <button id="tab-name-btn" onclick="switchAITab('name')"
+        class="flex-1 py-1.5 text-xs font-bold rounded-lg bg-white text-slate-700 shadow-sm transition-all">
+        📝 약품명으로
+      </button>
+      <button id="tab-url-btn" onclick="switchAITab('url')"
+        class="flex-1 py-1.5 text-xs font-bold rounded-lg text-slate-400 transition-all">
+        🔗 URL로
+      </button>
+      <button id="tab-batch-btn" onclick="switchAITab('batch')"
+        class="flex-1 py-1.5 text-xs font-bold rounded-lg text-slate-400 transition-all">
+        📋 일괄
+      </button>
+    </div>
+
+    <!-- Step 1-A: 약품명 입력 -->
+    <div id="ai-step-1">
+      <!-- 탭 A: 약품명 입력 -->
+      <div id="ai-tab-name">
+        <div class="field">
+          <label>약품명 <span class="text-red-400">*</span></label>
+          <input id="ai-drug-name" type="text" placeholder="예: 타이레놀 이알 서방정 650mg"
+            style="border:1.5px solid #e2e8f0;border-radius:10px;padding:9px 12px;font-size:14px;width:100%;"/>
+        </div>
+        <div class="field">
+          <label>제약사 <span class="text-red-400">*</span></label>
+          <select id="ai-mfr" style="border:1.5px solid #e2e8f0;border-radius:10px;padding:9px 12px;font-size:14px;width:100%;">
+            <option value="">선택해주세요</option>
+            <option>동아제약</option><option>한미약품</option><option>종근당</option>
+            <option>유한양행</option><option>보령제약</option><option>광동제약</option>
+            <option>한국얀센</option><option>GSK</option><option>기타</option>
+          </select>
+        </div>
+        <div class="field">
+          <label>제품 이미지 URL <span class="text-slate-400 font-normal">(선택)</span></label>
+          <input id="ai-image-url" type="url" placeholder="https://www.donga.co.kr/.../tylenol.jpg"
+            style="border:1.5px solid #e2e8f0;border-radius:10px;padding:9px 12px;font-size:14px;width:100%;"/>
+          <div id="ai-img-preview" class="mt-2 rounded-xl overflow-hidden bg-slate-50" style="display:none;max-height:120px;align-items:center;justify-content:center;">
+            <img id="ai-img-thumb" src="" class="max-h-[120px] max-w-full object-contain rounded-xl" onerror="this.parentElement.style.display='none'"/>
+          </div>
+          <button onclick="previewAIImage()" class="mt-1.5 text-xs text-teal-600 font-semibold hover:underline">미리보기 확인</button>
+        </div>
+      </div>
+
+      <!-- 탭 B: 페이지 URL -->
+      <div id="ai-tab-url" class="hidden">
+        <div class="bg-blue-50 rounded-xl p-3 mb-3 text-xs text-blue-700 leading-relaxed">
+          💡 제약사 홈페이지에서 약품 제품 페이지를 열고, 주소창의 URL을 복사해서 붙여넣으세요.<br/>
+          Worker가 직접 페이지를 읽어 약품명·이미지·효능을 자동으로 추출합니다.
+        </div>
+        <div class="field">
+          <label>제약사 제품 페이지 URL <span class="text-red-400">*</span></label>
+          <input id="ai-page-url" type="url"
+            placeholder="예: https://www.donga.co.kr/product/tylenol-er"
+            style="border:1.5px solid #e2e8f0;border-radius:10px;padding:9px 12px;font-size:14px;width:100%;"/>
+        </div>
+        <div class="text-xs text-slate-400 mb-3 leading-relaxed">
+          지원 잘 되는 사이트: 동아제약, 한미약품, 종근당, 유한양행 등<br/>
+          JS 렌더링만 쓰는 페이지는 내용을 못 읽을 수 있어요
+        </div>
+      </div>
+
+      <!-- 탭 C: 일괄 등록 -->
+      <div id="ai-tab-batch" class="hidden">
+        <div class="bg-amber-50 rounded-xl p-3 mb-3 text-xs text-amber-700 leading-relaxed">
+          💡 <strong>초기 구성용</strong> — 약품명을 한 줄에 하나씩 입력하면 AI가 순서대로 분석·등록합니다.<br/>
+          제약사는 각 약품명 뒤에 <code class="bg-amber-100 px-1 rounded">|제약사명</code>을 붙이면 자동 설정돼요.<br/>
+          예: <code class="bg-amber-100 px-1 rounded">타이레놀 이알 서방정|한국얀센</code>
+        </div>
+        <div class="field">
+          <label>약품명 목록 (한 줄에 하나) <span class="text-red-400">*</span></label>
+          <textarea id="batch-drug-list" rows="7" placeholder="타이레놀 이알 서방정|한국얀센&#10;판콜에이&#10;훼스탈골드정|한독&#10;비타민C 1000mg|유한양행&#10;알마겔에프현탁액"
+            style="border:1.5px solid #e2e8f0;border-radius:10px;padding:9px 12px;font-size:13px;width:100%;resize:vertical;font-family:monospace;"></textarea>
+        </div>
+        <div class="field">
+          <label>기본 제약사 <span class="text-slate-400 font-normal">(약품명에 |제약사 없을 때 적용)</span></label>
+          <select id="batch-default-mfr" style="border:1.5px solid #e2e8f0;border-radius:10px;padding:9px 12px;font-size:14px;width:100%;">
+            <option value="기타">기타 (AI가 판단)</option>
+            <option>동아제약</option><option>한미약품</option><option>종근당</option>
+            <option>유한양행</option><option>보령제약</option><option>광동제약</option>
+            <option>한국얀센</option><option>GSK</option>
+          </select>
+        </div>
+        <!-- 진행 로그 -->
+        <div id="batch-log" class="hidden mb-3 bg-slate-900 text-slate-100 rounded-xl p-3 text-xs font-mono max-h-40 overflow-y-auto leading-relaxed"></div>
+        <div id="batch-progress-wrap" class="hidden mb-3">
+          <div class="flex justify-between text-xs text-slate-500 mb-1">
+            <span id="batch-progress-label">진행 중...</span>
+            <span id="batch-progress-pct"></span>
+          </div>
+          <div class="w-full bg-slate-100 rounded-full h-2">
+            <div id="batch-progress-bar" class="bg-teal-500 h-2 rounded-full transition-all" style="width:0%"></div>
+          </div>
+        </div>
+      </div>
+
+      <div id="ai-step1-error" class="hidden text-xs text-red-500 mb-3 p-2 bg-red-50 rounded-lg"></div>
+      <button onclick="_aiCurrentTab==='batch' ? runBatchRegister() : runAIAnalysis()"
+        id="ai-analyze-btn" class="btn-primary w-full py-2.5">
+        🔍 AI로 정보 채우기
+      </button>
+    </div>
+
+    <!-- Step 2: AI 결과 확인 및 수정 -->
+    <div id="ai-step-2" class="hidden">
+      <div class="flex items-center gap-2 mb-3">
+        <div class="text-xs font-bold text-slate-400 uppercase tracking-wider">② AI가 채운 내용 — 수정 후 등록</div>
+        <span id="ai-source-badge" class="text-xs font-bold px-2 py-0.5 rounded-full"></span>
+      </div>
+
+      <!-- 이미지 미리보기 (Step 2) -->
+      <div id="ai-step2-img-wrap" class="hidden mb-3 flex gap-3 items-center bg-slate-50 rounded-xl p-3">
+        <img id="ai-step2-img" src="" class="w-16 h-16 rounded-xl object-cover border border-slate-200"
+          onerror="document.getElementById('ai-step2-img-wrap').classList.add('hidden')"/>
+        <div class="flex-1 min-w-0">
+          <div class="text-xs font-bold text-slate-500 mb-1">등록될 이미지</div>
+          <div id="ai-step2-img-url" class="text-xs text-slate-400 truncate"></div>
+          <button onclick="document.getElementById('ai-step2-img-wrap').classList.add('hidden');document.getElementById('ai-image-url').value='';"
+            class="text-xs text-red-400 hover:underline mt-1">이미지 제거</button>
+        </div>
+      </div>
+
+      <!-- 약품명 + 제약사 확인 (URL 탭에서 자동 추출된 경우 수정 가능) -->
+      <div class="grid grid-cols-[1fr_auto] gap-2 mb-3">
+        <div>
+          <label class="block text-xs font-bold text-slate-500 mb-1">약품명 확인</label>
+          <input id="ai-result-name" type="text"
+            style="border:1.5px solid #e2e8f0;border-radius:10px;padding:8px 12px;font-size:14px;width:100%;"/>
+        </div>
+        <div style="min-width:110px;">
+          <label class="block text-xs font-bold text-slate-500 mb-1">제약사</label>
+          <select id="ai-result-mfr" style="border:1.5px solid #e2e8f0;border-radius:10px;padding:8px 10px;font-size:13px;width:100%;">
+            <option>동아제약</option><option>한미약품</option><option>종근당</option>
+            <option>유한양행</option><option>보령제약</option><option>광동제약</option>
+            <option>한국얀센</option><option>GSK</option><option>기타</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="grid grid-cols-[52px_1fr] gap-2 mb-3">
+        <div>
+          <label class="block text-xs font-bold text-slate-500 mb-1">이모지</label>
+          <input id="ai-result-emoji" type="text" maxlength="2"
+            style="text-align:center;font-size:1.4rem;padding:6px;border:1.5px solid #e2e8f0;border-radius:10px;width:100%;"/>
+        </div>
+        <div>
+          <label class="block text-xs font-bold text-slate-500 mb-1">카테고리</label>
+          <select id="ai-result-cat" style="border:1.5px solid #e2e8f0;border-radius:10px;padding:9px 12px;font-size:14px;width:100%;height:42px;">
+            <option>소화기</option><option>통증·감기</option><option>눈·피부</option>
+            <option>비타민·영양제</option><option>상비약</option><option>기타</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="field">
+        <label class="block text-xs font-bold text-slate-500 mb-1">기능 태그 <span class="text-slate-400 font-normal">(쉼표 구분)</span></label>
+        <input id="ai-result-tags" type="text"
+          style="border:1.5px solid #e2e8f0;border-radius:10px;padding:9px 12px;font-size:14px;width:100%;"/>
+      </div>
+      <div class="field">
+        <label class="block text-xs font-bold text-slate-500 mb-1">⚕️ 효능·효과</label>
+        <textarea id="ai-result-efficacy" rows="2"
+          style="border:1.5px solid #e2e8f0;border-radius:10px;padding:9px 12px;font-size:14px;width:100%;resize:vertical;"></textarea>
+      </div>
+      <div class="field">
+        <label class="block text-xs font-bold text-slate-500 mb-1">💉 용법·용량</label>
+        <textarea id="ai-result-dosage" rows="2"
+          style="border:1.5px solid #e2e8f0;border-radius:10px;padding:9px 12px;font-size:14px;width:100%;resize:vertical;"></textarea>
+      </div>
+      <div class="field">
+        <label class="block text-xs font-bold text-slate-500 mb-1">💬 약사 한마디</label>
+        <textarea id="ai-result-note" rows="2"
+          style="border:1.5px solid #e2e8f0;border-radius:10px;padding:9px 12px;font-size:14px;width:100%;resize:vertical;"></textarea>
+      </div>
+
+      <div id="ai-step2-error" class="hidden text-xs text-red-500 mb-3 p-2 bg-red-50 rounded-lg"></div>
+      <div class="grid grid-cols-3 gap-2">
+        <button onclick="document.getElementById('ai-step-1').classList.remove('hidden');document.getElementById('ai-step-2').classList.add('hidden');"
+          class="btn-secondary py-2.5 text-sm">← 다시</button>
+        <button onclick="submitAIRegister(false)" class="btn-primary py-2.5 text-sm" id="ai-submit-btn">등록하기</button>
+        <button onclick="submitAIRegister(true)"
+          class="py-2.5 text-sm font-bold rounded-xl border-2 border-teal-500 text-teal-600 bg-teal-50 hover:bg-teal-100 transition-all cursor-pointer">
+          계속 등록 →
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+/* ══════════════════════════════════════
+   SUPABASE 설정
+══════════════════════════════════════ */
+const SUPABASE_URL  = 'https://cnpaelquawzpywtdpmkw.supabase.co';
+const SUPABASE_ANON = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImNucGFlbHF1YXd6cHl3dGRwbWt3Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzg2NDUyNjgsImV4cCI6MjA5NDIyMTI2OH0.GVFXD4aiMRiLHD-BiRgLrirg3VrdXgEj4AKLyk0Tgo4';
+
+/* ══════════════════════════════════════
+   앱 상태
+══════════════════════════════════════ */
+// 게시판 전용 Worker URL (pharmacy-board — Cloudflare Workers)
+const WORKER_URL   = 'https://pharmacy-board.speed0324.workers.dev';
+const isAdminMode  = new URLSearchParams(location.search).get('mode') === 'admin';
+
+let sb = null;
+let currentUser = null;
+let currentProfile = null;
+let drugs = [];
+let currentMfr  = 'all';
+let currentCat  = 'all';
+let currentSort = 'downloads';
+let searchQuery = '';
+let currentDrug = null;        // 상세 보기 중인 약품
+let _uploadFiles = [null, null, null];  // 이미지 파일 3개
+
+/* ══════════════════════════════════════
+   초기화
+══════════════════════════════════════ */
+window.addEventListener('DOMContentLoaded', () => {
+  sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON);
+  updateHeaderAuth(); // 인증 초기화 전에 즉시 헤더 렌더 (로그인 버튼 바로 표시)
+  sb.auth.onAuthStateChange(async (_e, session) => {
+    currentUser = session?.user || null;
+    if (currentUser) { await loadProfile(); }
+    else { currentProfile = null; }
+    updateHeaderAuth();
+  });
+  loadDrugs();
+  syncAuthUI();
+});
+
+/* ══════════════════════════════════════
+   뷰 전환
+══════════════════════════════════════ */
+function showView(name) {
+  document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
+  document.getElementById('view-' + name).classList.add('active');
+  window.scrollTo(0, 0);
+}
+
+/* ══════════════════════════════════════
+   데이터 로드
+══════════════════════════════════════ */
+async function loadDrugs() {
+  document.getElementById('loading-state').classList.remove('hidden');
+  document.getElementById('drug-grid').innerHTML = '';
+  try {
+    const { data, error } = await sb.from('drugs').select('*').order('total_downloads', { ascending: false });
+    if (error) throw error;
+    drugs = data || [];
+  } catch(e) {
+    console.error(e);
+    drugs = [];
+    showToast('⚠️ 데이터 로드 실패: ' + (e.message || ''));
+  }
+  document.getElementById('loading-state').classList.add('hidden');
+  renderDrugs();
+}
+
+async function loadProfile() {
+  if (!sb || !currentUser) return;
+  const { data } = await sb.from('profiles').select('*').eq('id', currentUser.id).single();
+  currentProfile = data;
+}
+
+async function loadVersions(drugId) {
+  document.getElementById('ver-loading').classList.remove('hidden');
+  document.getElementById('version-list').innerHTML = '';
+  document.getElementById('ver-empty').classList.add('hidden');
+  try {
+    const { data, error } = await sb
+      .from('drug_versions')
+      .select('*')
+      .eq('drug_id', drugId)
+      .order('downloads_count', { ascending: false });
+    if (error) throw error;
+    document.getElementById('ver-loading').classList.add('hidden');
+    if (!data || data.length === 0) {
+      document.getElementById('ver-empty').classList.remove('hidden');
+    } else {
+      renderVersions(data);
+    }
+  } catch(e) {
+    document.getElementById('ver-loading').classList.add('hidden');
+    showToast('버전 로드 실패: ' + (e.message || ''));
+  }
+}
+
+/* ══════════════════════════════════════
+   렌더링: 약품 목록
+══════════════════════════════════════ */
+function getFiltered() {
+  const q = searchQuery.toLowerCase();
+  let list = drugs.filter(d => {
+    const mfr = currentMfr === 'all' || d.manufacturer_name === currentMfr;
+    const cat = currentCat === 'all' || d.category === currentCat;
+    const srch = !q || d.canonical_name.toLowerCase().includes(q);
+    return mfr && cat && srch;
+  });
+  if (currentSort === 'versions')  list = [...list].sort((a,b) => (b.version_count||0)-(a.version_count||0));
+  if (currentSort === 'latest')    list = [...list].sort((a,b) => new Date(b.created_at)-new Date(a.created_at));
+  // 'downloads' 는 DB에서 이미 정렬됨
+  return list;
+}
+
+function renderDrugs() {
+  const list = getFiltered();
+  const grid  = document.getElementById('drug-grid');
+  const empty = document.getElementById('empty-state');
+  grid.innerHTML = '';
+  document.getElementById('drug-count').textContent = `총 ${list.length}개`;
+
+  if (list.length === 0) { empty.classList.remove('hidden'); return; }
+  empty.classList.add('hidden');
+
+  list.forEach(d => {
+    const card = document.createElement('div');
+    card.className = 'card fade-in overflow-hidden';
+    card.onclick = () => openDrugDetail(d);
+
+    const tags = (d.func_tags || []).slice(0,3).map(t =>
+      `<span class="text-xs bg-teal-50 text-teal-700 font-semibold px-2 py-0.5 rounded-full">${t}</span>`
+    ).join('');
+
+    card.innerHTML = `
+      <div class="p-3">
+        <div class="flex items-start justify-between mb-2">
+          <span class="text-3xl">${d.emoji || '💊'}</span>
+          <span class="text-xs bg-slate-100 text-slate-500 font-semibold px-2 py-0.5 rounded-full">${d.category || '기타'}</span>
+        </div>
+        <div class="font-bold text-slate-800 text-sm leading-tight mb-1 line-clamp-2">${d.canonical_name}</div>
+        <div class="text-xs text-slate-400 mb-2 truncate">${d.manufacturer_name || ''}</div>
+        <div class="flex flex-wrap gap-1 mb-2">${tags}</div>
+        <div class="flex items-center justify-between text-xs border-t border-slate-50 pt-2 mt-1">
+          <span class="font-bold text-teal-600">${d.version_count || 0}개 버전</span>
+          <span class="text-slate-400">📋 ${d.total_downloads || 0}</span>
+        </div>
+      </div>`;
+    grid.appendChild(card);
+  });
+}
+
+/* ══════════════════════════════════════
+   렌더링: 버전 목록
+══════════════════════════════════════ */
+function renderVersions(versions) {
+  const list = document.getElementById('version-list');
+  list.innerHTML = '';
+
+  versions.forEach((v, idx) => {
+    const isOwner = currentUser && v.user_id === currentUser.id;
+    const isBest  = idx === 0;
+
+    // 이미지 미리보기 (최대 3개)
+    const imgs = [v.image_url, v.image_url_2, v.image_url_3].filter(Boolean);
+    const imgHtml = imgs.length > 0
+      ? imgs.map(url =>
+          `<img src="${url}" class="w-14 h-14 rounded-lg object-cover border border-slate-100 cursor-pointer"
+            onclick="openImageFull('${url}')" onerror="this.style.display='none'"/>`
+        ).join('')
+      : `<div class="text-xs text-slate-400 py-1">이미지 없음</div>`;
+
+    const tagsHtml = (currentDrug?.func_tags || []).map(t =>
+      `<span class="text-xs bg-teal-50 text-teal-600 font-semibold px-2 py-0.5 rounded-full">${t}</span>`
+    ).join('');
+
+    const item = document.createElement('div');
+    item.className = 'ver-item' + (isBest ? ' border-teal-400' : '') + (idx === 0 ? ' open' : '');
+    item.innerHTML = `
+      <div class="flex items-center gap-2.5 px-4 py-3 bg-white cursor-pointer" onclick="toggleVersion(this.parentElement)">
+        <div class="w-6 h-6 rounded-full flex items-center justify-center text-xs font-extrabold shrink-0
+          ${isBest ? 'bg-teal-600 text-white' : 'bg-slate-100 text-slate-500'}">
+          ${idx + 1}
+        </div>
+        ${isBest ? '<span class="text-xs font-bold text-teal-600 bg-teal-50 px-2 py-0.5 rounded-full">⭐ 인기</span>' : ''}
+        <div class="flex-1 min-w-0">
+          <span class="font-bold text-sm text-slate-800">${v.pharmacy_name || '익명약국'}</span>
+          <span class="text-xs text-slate-400 ml-2">${(v.created_at||'').slice(0,10)}</span>
+        </div>
+        <span class="text-xs text-slate-400 shrink-0">📋 ${v.downloads_count || 0}회</span>
+        <span class="text-slate-300 text-sm">${item?.classList?.contains('open') ? '▲' : '▼'}</span>
+      </div>
+      <div class="ver-preview">
+        <div class="flex gap-2 mb-3">${imgHtml}</div>
+        <div class="space-y-2 text-sm text-slate-700">
+          <div><span class="font-bold text-teal-700 text-xs">⚕️ 효능·효과</span><br/>${v.efficacy || ''}</div>
+          <div><span class="font-bold text-blue-600 text-xs">💉 용법·용량</span><br/>${v.dosage || ''}</div>
+          ${v.pharmacist_note ? `<div class="bg-amber-50 rounded-lg p-2.5"><span class="font-bold text-amber-700 text-xs">💬 약사 한마디</span><br/>${v.pharmacist_note}</div>` : ''}
+        </div>
+        <div class="flex gap-2 mt-3">
+          <button onclick="downloadVersion('${v.id}')" class="btn-primary flex-1 py-2 text-sm">✅ 이 버전 키오스크에 가져오기</button>
+          <button onclick="copyVersionToNew('${v.id}')" class="btn-secondary px-3 py-2 text-xs">✏️ 토대로 내 버전 만들기</button>
+          ${isOwner ? `
+            <button onclick="editVersion('${v.id}')" class="btn-secondary px-3 py-2 text-xs">수정</button>
+            <button onclick="deleteVersion('${v.id}')" class="px-3 py-2 text-xs rounded-lg bg-red-50 text-red-500 border-none cursor-pointer font-semibold">삭제</button>
+          ` : ''}
+        </div>
+      </div>`;
+    list.appendChild(item);
+  });
+}
+
+function toggleVersion(el) {
+  el.classList.toggle('open');
+  // 화살표 토글
+  const arrow = el.querySelector('.ver-preview ~ div span:last-child, .flex span:last-child');
+}
+
+/* ══════════════════════════════════════
+   약품 상세 열기
+══════════════════════════════════════ */
+function openDrugDetail(d) {
+  currentDrug = d;
+
+  // 헤더 채우기
+  document.getElementById('detail-drug-name').textContent  = d.canonical_name;
+  document.getElementById('detail-drug-mfr').textContent   = d.manufacturer_name + (d.category ? ' · ' + d.category : '');
+  document.getElementById('detail-emoji-big').textContent  = d.emoji || '💊';
+  document.getElementById('detail-ver-count').textContent  = d.version_count || 0;
+  document.getElementById('detail-dl-count').textContent   = (d.total_downloads || 0).toLocaleString();
+
+  // 기능 태그
+  const tagsEl = document.getElementById('detail-drug-tags');
+  tagsEl.innerHTML = (d.func_tags || []).map(t =>
+    `<span class="text-xs bg-teal-50 text-teal-700 font-semibold px-2.5 py-1 rounded-full">${t}</span>`
+  ).join('');
+
+  // 내 버전 등록 버튼
+  const addBtn = document.getElementById('add-version-btn');
+  if (currentUser) addBtn.classList.remove('hidden');
+  else addBtn.classList.add('hidden');
+
+  showView('detail');
+  loadVersions(d.id);
+}
+
+/* ══════════════════════════════════════
+   다운로드 (키오스크 가져오기)
+══════════════════════════════════════ */
+async function downloadVersion(versionId) {
+  // 버전 데이터 찾기
+  const vEl = document.querySelector(`[onclick="downloadVersion('${versionId}')"]`);
+  const versionsData = await sb.from('drug_versions').select('*').eq('id', versionId).single();
+  if (versionsData.error || !versionsData.data) { showToast('❌ 버전 데이터 오류'); return; }
+  const v = versionsData.data;
+
+  const exportData = {
+    source: '약품공유게시판',
+    version: 2,
+    drug: {
+      name:           currentDrug?.canonical_name || '',
+      emoji:          currentDrug?.emoji || '💊',
+      cat:            currentDrug?.category || '기타',
+      tagline:        (v.efficacy || '').slice(0, 60),
+      info:           v.dosage || '',
+      pharmacistNote: v.pharmacist_note || '',
+      imageUrl:       v.image_url || '',
+      price:          0,   // 가격은 각 약국이 직접 설정
+      list:           0,
+    }
+  };
+
+  try {
+    await navigator.clipboard.writeText(JSON.stringify(exportData, null, 2));
+    // 다운로드 카운트 증가
+    await sb.rpc('increment_version_downloads', { p_version_id: versionId }).catch(async () => {
+      const { data: cur } = await sb.from('drug_versions').select('downloads_count').eq('id', versionId).single();
+      await sb.from('drug_versions').update({ downloads_count: (cur?.downloads_count||0)+1 }).eq('id', versionId);
+    });
+    showToast('✅ 클립보드 복사 완료! 키오스크 → "게시판에서 붙여넣기"');
+    // 버전 목록 새로고침
+    if (currentDrug) setTimeout(() => loadVersions(currentDrug.id), 800);
+  } catch(e) {
+    prompt('아래 내용을 키오스크에 붙여넣으세요:', JSON.stringify(exportData));
+  }
+}
+
+/* ══════════════════════════════════════
+   버전 등록 모달
+══════════════════════════════════════ */
+function openVersionUpload(prefill) {
+  if (!currentUser) { openAuth(); return; }
+  if (!currentDrug) return;
+
+  document.getElementById('vm-title').textContent    = '버전 등록';
+  document.getElementById('vm-drug-name').textContent = currentDrug.canonical_name;
+  document.getElementById('vm-drug-id').value         = currentDrug.id;
+  document.getElementById('vm-version-id').value      = '';
+  document.getElementById('vm-efficacy').value        = prefill?.efficacy || '';
+  document.getElementById('vm-dosage').value          = prefill?.do
