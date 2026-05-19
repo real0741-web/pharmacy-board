@@ -76,15 +76,27 @@
         <p class="text-teal-100 text-sm mt-0.5">버전별로 올리고, 마음에 드는 버전을 골라 내 키오스크에 적용하세요</p>
       </div>
       <div class="flex items-center gap-2 shrink-0">
-        <button id="ai-register-btn" onclick="openAIRegisterModal()"
+        <button id="ai-register-btn" onclick="openRegModal()"
           class="hidden bg-teal-900 bg-opacity-50 text-white font-bold px-3 py-2 rounded-xl text-sm border border-teal-400 border-opacity-50 hover:bg-opacity-80 transition-all">
           🤖 AI 등록
         </button>
-        <button id="upload-btn" onclick="openNewDrugModal()"
+        <button id="upload-btn" onclick="openRegModal()"
           class="hidden shrink-0 bg-white text-teal-700 font-bold px-4 py-2 rounded-xl text-sm shadow hover:shadow-md transition-all">
           + 약품 등록
         </button>
       </div>
+    </div>
+  </div>
+
+  <!-- 관리자 알림 배너 (admin mode일 때만 표시) -->
+  <div id="admin-notice-bar" class="hidden bg-amber-50 border-b border-amber-200">
+    <div class="max-w-5xl mx-auto px-4 py-2 flex items-center gap-3 text-xs">
+      <span class="text-amber-600 font-bold">⚠️ 관리자 모드</span>
+      <span id="admin-notice-msg" class="text-amber-700 flex-1"></span>
+      <button onclick="showView('settings')"
+        class="shrink-0 bg-amber-500 text-white font-bold px-3 py-1 rounded-lg hover:bg-amber-600 transition-all">
+        ⚙️ 설정 열기
+      </button>
     </div>
   </div>
 
@@ -132,7 +144,7 @@
       <div class="font-semibold">등록된 약품이 없습니다</div>
       <div class="text-sm mt-1">첫 번째로 약품을 등록해보세요!</div>
     </div>
-    <div id="loading-state" class="text-center py-20 text-slate-400">
+    <div id="loading-state" class="hidden text-center py-20 text-slate-400">
       <div class="text-4xl mb-3 animate-pulse">⏳</div>
       <div class="text-sm">불러오는 중...</div>
     </div>
@@ -224,9 +236,18 @@
       <h2 class="text-lg font-extrabold">새 약품 등록</h2>
       <button onclick="closeNewDrugModal()" class="w-8 h-8 rounded-full bg-slate-100 text-slate-500 text-sm">✕</button>
     </div>
-    <div class="text-xs text-slate-400 bg-slate-50 rounded-lg p-3 mb-4 leading-relaxed">
-      약품의 기본 정보(이름·제약사·카테고리)를 등록합니다.<br/>
-      사진·설명·약사한마디는 다음 단계에서 내 버전으로 올립니다.
+    <!-- 🔍 식약처 검색 -->
+    <div class="bg-slate-50 rounded-xl p-3 mb-4">
+      <div class="text-xs font-semibold text-slate-500 mb-2">🔍 식약처 DB에서 약품명으로 자동 입력</div>
+      <div class="flex gap-2 mb-2">
+        <input id="nd-search-input" type="text" placeholder="예: 타이레놀"
+          class="flex-1 border border-slate-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-teal-500"
+          onkeydown="if(event.key==='Enter')searchBoardDrugByName()"/>
+        <button onclick="searchBoardDrugByName()"
+          class="px-4 py-2 rounded-xl bg-teal-600 text-white text-sm font-bold hover:bg-teal-700 shrink-0">검색</button>
+      </div>
+      <div id="nd-search-status" class="text-xs text-slate-400 mb-1 min-h-[1rem]"></div>
+      <div id="nd-search-results" class="hidden space-y-1 max-h-52 overflow-y-auto rounded-lg"></div>
     </div>
     <div class="grid grid-cols-[64px_1fr] gap-3 mb-3">
       <div class="field mb-0">
@@ -245,6 +266,7 @@
         <option value="">선택해주세요</option>
         <option>동아제약</option><option>한미약품</option><option>종근당</option>
         <option>유한양행</option><option>보령제약</option><option>광동제약</option>
+        <option>대웅제약</option><option>일동제약</option><option>한독</option>
         <option>한국얀센</option><option>GSK</option><option>기타</option>
       </select>
     </div>
@@ -261,6 +283,10 @@
       <input id="nd-tags" type="text" placeholder="예: 두통, 해열, 진통"/>
     </div>
     <div id="nd-error" class="hidden text-xs text-red-500 mb-3 p-2 bg-red-50 rounded-lg"></div>
+    <div class="bg-teal-50 rounded-xl p-3 mb-3 text-xs text-teal-700 leading-relaxed">
+      💡 다음 단계에서 <strong>효능 요약 · 복약지도 · 약사 한마디</strong>를 입력합니다.<br/>
+      식약처에서 불러온 경우 자동 입력됩니다.
+    </div>
     <div class="grid grid-cols-2 gap-2">
       <button onclick="closeNewDrugModal()" class="btn-secondary py-2.5">취소</button>
       <button onclick="submitNewDrug()" class="btn-primary py-2.5" id="nd-submit-btn">다음 — 버전 등록 →</button>
@@ -308,18 +334,25 @@
     </div>
 
     <div class="field">
-      <label>⚕️ 효능·효과 <span class="text-red-400">*</span></label>
-      <textarea id="vm-efficacy" rows="3" placeholder="예: 두통, 치통, 근육통, 생리통, 관절통 완화"
+      <label>⚕️ 한줄 설명 · 효능 요약 <span class="text-red-400">*</span>
+        <span class="text-slate-400 font-normal ml-1">(60자 이내 권장)</span></label>
+      <textarea id="vm-efficacy" rows="2" placeholder="예: 두통·치통·생리통·근육통 완화, 해열"
         style="border:1.5px solid #e2e8f0;border-radius:10px;padding:9px 12px;font-size:14px;width:100%;resize:vertical;"></textarea>
     </div>
     <div class="field">
-      <label>💉 용법·용량 <span class="text-red-400">*</span></label>
-      <textarea id="vm-dosage" rows="2" placeholder="예: 1회 1~2정, 1일 2~3회, 4~6시간 간격 복용"
+      <label>💉 복약 지도 · 용법·용량 <span class="text-red-400">*</span></label>
+      <textarea id="vm-dosage" rows="3" placeholder="예: 성인 1회 1~2정, 1일 2~3회 복용. 4~6시간 간격 유지. 공복 복용 시 위장장애 가능."
         style="border:1.5px solid #e2e8f0;border-radius:10px;padding:9px 12px;font-size:14px;width:100%;resize:vertical;"></textarea>
     </div>
     <div class="field">
-      <label>💬 약사 한마디 <span class="text-slate-400 font-normal">(선택)</span></label>
-      <textarea id="vm-note" rows="2" placeholder="예: 식후 복용 권장. 위가 약하신 분께 특히 추천"
+      <div class="flex items-center justify-between mb-1">
+        <label class="mb-0">💬 약사 한마디 <span class="text-slate-400 font-normal">(선택 · 1~2문장 해요체)</span></label>
+        <button id="vm-ai-btn" type="button" onclick="aiSummarizeNote()"
+          class="flex items-center gap-1 text-xs font-bold text-teal-600 bg-teal-50 hover:bg-teal-100 border border-teal-200 rounded-lg px-2.5 py-1 transition-all">
+          🤖 AI 자동완성
+        </button>
+      </div>
+      <textarea id="vm-note" rows="2" placeholder="예: 식후 복용 권장. 위가 약하신 분께 특히 추천해요."
         style="border:1.5px solid #e2e8f0;border-radius:10px;padding:9px 12px;font-size:14px;width:100%;resize:vertical;"></textarea>
     </div>
 
@@ -328,6 +361,171 @@
       <button onclick="closeVersionModal()" class="btn-secondary py-2.5">취소</button>
       <button onclick="submitVersion()" class="btn-primary py-2.5" id="vm-submit-btn">등록하기</button>
     </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════
+     MODAL: 약품 등록 (키오스크 스타일 — 단일 화면)
+══════════════════════════════════════ -->
+<div id="reg-modal" class="hidden fixed inset-0 z-50 modal-bg flex items-end sm:items-center justify-center">
+  <div class="bg-white rounded-t-3xl sm:rounded-2xl shadow-2xl w-full max-w-lg
+              max-h-[95vh] overflow-y-auto fade-in">
+
+    <!-- 헤더 -->
+    <div class="sticky top-0 bg-white z-10 flex items-center justify-between px-5 pt-5 pb-3
+                border-b border-slate-100">
+      <div>
+        <h2 class="text-base font-extrabold text-slate-800">약품 등록</h2>
+        <p id="reg-status" class="text-xs text-slate-400 mt-0.5">약품명을 입력하고 AI를 눌러주세요</p>
+      </div>
+      <button onclick="closeRegModal()"
+        class="w-8 h-8 rounded-full bg-slate-100 text-slate-500 text-sm font-bold flex items-center justify-center hover:bg-slate-200">✕</button>
+    </div>
+
+    <div class="px-5 py-4 space-y-3">
+
+      <!-- 약품명 + AI 버튼 (키오스크처럼 강조) -->
+      <div class="flex gap-2">
+        <input id="reg-name" type="text" placeholder="약품명 입력 (예: 타이레놀, 판콜에이)"
+          class="flex-1 border-2 border-slate-200 rounded-2xl px-4 py-3 text-sm font-semibold
+                 focus:border-teal-500 focus:outline-none"
+          onkeydown="if(event.key==='Enter') regAI()"/>
+        <button onclick="regAI()" id="reg-ai-btn"
+          class="shrink-0 bg-teal-600 text-white font-bold px-4 py-3 rounded-2xl text-sm
+                 hover:bg-teal-700 active:scale-95 transition-all flex items-center gap-1.5">
+          <span id="reg-ai-icon">🤖</span>
+          <span id="reg-ai-label">AI 분석</span>
+        </button>
+      </div>
+
+      <!-- 에러 -->
+      <div id="reg-error" class="hidden text-xs text-red-500 bg-red-50 rounded-xl px-3 py-2"></div>
+
+      <!-- AI 결과 영역 (처음엔 숨김) -->
+      <div id="reg-result" class="hidden space-y-3">
+
+        <!-- 이모지 + 이름 (수정 가능) -->
+        <div class="flex gap-2">
+          <input id="reg-emoji" type="text" maxlength="2"
+            class="w-14 text-center text-2xl border-2 border-slate-200 rounded-2xl py-2.5 focus:border-teal-500 focus:outline-none"/>
+          <div class="flex-1 relative">
+            <input id="reg-name2" type="text" placeholder="약품명"
+              class="w-full border-2 border-slate-200 rounded-2xl px-4 py-2.5 text-sm font-semibold
+                     focus:border-teal-500 focus:outline-none"/>
+            <span id="reg-source-badge"
+              class="absolute right-3 top-1/2 -translate-y-1/2 text-xs font-bold
+                     px-2 py-0.5 rounded-full bg-blue-100 text-blue-700"></span>
+          </div>
+        </div>
+
+        <!-- 이미지 미리보기 (있을 때만) -->
+        <div id="reg-img-wrap" class="hidden">
+          <img id="reg-img" src="" class="w-full max-h-36 object-contain rounded-2xl bg-slate-50 border border-slate-100"/>
+          <input id="reg-img-url" type="url" placeholder="이미지 URL"
+            class="mt-1.5 w-full border border-slate-200 rounded-xl px-3 py-2 text-xs
+                   focus:border-teal-500 focus:outline-none"
+            oninput="regImgPreview()"/>
+        </div>
+        <div id="reg-img-url-only" class="hidden">
+          <input id="reg-img-url2" type="url" placeholder="이미지 URL (선택)"
+            class="w-full border border-slate-200 rounded-xl px-3 py-2 text-xs
+                   focus:border-teal-500 focus:outline-none"
+            oninput="regImgPreview2()"/>
+        </div>
+
+        <!-- 제약사 + 카테고리 -->
+        <div class="grid grid-cols-2 gap-2">
+          <div>
+            <label class="text-xs font-bold text-slate-500 mb-1 block">제약사</label>
+            <select id="reg-mfr"
+              class="w-full border-2 border-slate-200 rounded-xl px-3 py-2 text-sm
+                     focus:border-teal-500 focus:outline-none">
+              <option value="기타">기타</option>
+              <option>동아제약</option><option>한미약품</option><option>종근당</option>
+              <option>유한양행</option><option>보령제약</option><option>광동제약</option>
+              <option>한국얀센</option><option>GSK</option>
+            </select>
+          </div>
+          <div>
+            <label class="text-xs font-bold text-slate-500 mb-1 block">카테고리</label>
+            <select id="reg-cat"
+              class="w-full border-2 border-slate-200 rounded-xl px-3 py-2 text-sm
+                     focus:border-teal-500 focus:outline-none">
+              <option value="기타">기타</option>
+              <option value="소화기">소화기</option>
+              <option value="통증·감기">통증·감기</option>
+              <option value="비타민·영양제">비타민·영양제</option>
+              <option value="눈·피부">눈·피부</option>
+              <option value="상비약">상비약</option>
+            </select>
+          </div>
+        </div>
+
+        <!-- 한줄 설명 -->
+        <div>
+          <label class="text-xs font-bold text-slate-500 mb-1 block">⚕️ 한줄 설명 · 효능</label>
+          <textarea id="reg-efficacy" rows="2" placeholder="예: 두통·치통·생리통 완화, 해열"
+            class="w-full border-2 border-slate-200 rounded-xl px-3 py-2 text-sm
+                   focus:border-teal-500 focus:outline-none resize-none"></textarea>
+        </div>
+
+        <!-- 복약 지도 -->
+        <div>
+          <label class="text-xs font-bold text-slate-500 mb-1 block">💉 복약 지도 · 용법</label>
+          <textarea id="reg-dosage" rows="2" placeholder="예: 성인 1회 1~2정, 1일 2~3회, 4시간 간격"
+            class="w-full border-2 border-slate-200 rounded-xl px-3 py-2 text-sm
+                   focus:border-teal-500 focus:outline-none resize-none"></textarea>
+        </div>
+
+        <!-- 약사 한마디 + AI 버튼 -->
+        <div>
+          <div class="flex items-center justify-between mb-1">
+            <label class="text-xs font-bold text-slate-500">💬 약사 한마디</label>
+            <button onclick="regRegenNote()" id="reg-regen-btn"
+              class="text-xs text-teal-600 font-bold bg-teal-50 border border-teal-200
+                     rounded-lg px-2 py-0.5 hover:bg-teal-100 transition-all">
+              🤖 재생성
+            </button>
+          </div>
+          <textarea id="reg-note" rows="2" placeholder="예: 식후 복용 권장. 위가 약한 분께 추천해요."
+            class="w-full border-2 border-slate-200 rounded-xl px-3 py-2 text-sm
+                   focus:border-teal-500 focus:outline-none resize-none"></textarea>
+        </div>
+
+        <!-- 기능 태그 -->
+        <div>
+          <label class="text-xs font-bold text-slate-500 mb-1 block">🏷 기능 태그 <span class="font-normal">(쉼표 구분)</span></label>
+          <input id="reg-tags" type="text" placeholder="예: 두통, 해열, 진통"
+            class="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm
+                   focus:border-teal-500 focus:outline-none"/>
+        </div>
+
+      </div><!-- /reg-result -->
+    </div><!-- /px-5 -->
+
+    <!-- 하단 버튼 -->
+    <div id="reg-footer" class="sticky bottom-0 bg-white border-t border-slate-100 px-5 py-4">
+      <!-- AI 분석 전 -->
+      <div id="reg-footer-pre" class="">
+        <button onclick="regAI()"
+          class="w-full btn-primary py-3.5 text-sm font-bold rounded-2xl">
+          🤖 AI로 정보 자동 완성
+        </button>
+      </div>
+      <!-- AI 분석 후 -->
+      <div id="reg-footer-post" class="hidden grid grid-cols-2 gap-2">
+        <button onclick="regSubmit(true)"
+          class="py-3 rounded-2xl border-2 border-teal-500 text-teal-600 font-bold text-sm
+                 hover:bg-teal-50 transition-all">
+          ✅ 등록 후 계속
+        </button>
+        <button onclick="regSubmit(false)" id="reg-submit-btn"
+          class="py-3 rounded-2xl btn-primary text-sm font-bold">
+          ✅ 등록 완료
+        </button>
+      </div>
+    </div>
+
   </div>
 </div>
 
@@ -348,15 +546,11 @@
     <div class="flex rounded-xl bg-slate-100 p-1 mb-4">
       <button id="tab-name-btn" onclick="switchAITab('name')"
         class="flex-1 py-1.5 text-xs font-bold rounded-lg bg-white text-slate-700 shadow-sm transition-all">
-        📝 약품명으로
-      </button>
-      <button id="tab-url-btn" onclick="switchAITab('url')"
-        class="flex-1 py-1.5 text-xs font-bold rounded-lg text-slate-400 transition-all">
-        🔗 URL로
+        📝 약품명 입력
       </button>
       <button id="tab-batch-btn" onclick="switchAITab('batch')"
         class="flex-1 py-1.5 text-xs font-bold rounded-lg text-slate-400 transition-all">
-        📋 일괄
+        📋 일괄 등록
       </button>
     </div>
 
@@ -364,28 +558,29 @@
     <div id="ai-step-1">
       <!-- 탭 A: 약품명 입력 -->
       <div id="ai-tab-name">
-        <div class="field">
-          <label>약품명 <span class="text-red-400">*</span></label>
-          <input id="ai-drug-name" type="text" placeholder="예: 타이레놀 이알 서방정 650mg"
-            style="border:1.5px solid #e2e8f0;border-radius:10px;padding:9px 12px;font-size:14px;width:100%;"/>
+        <div class="bg-teal-50 rounded-xl p-3 mb-3 text-xs text-teal-700 leading-relaxed">
+          💡 약품명 입력 → <strong>식약처 DB 자동 검색</strong> → AI가 효능·복약지도 정리
+          <br/>식약처 API 키가 설정된 경우 정확도가 훨씬 높아집니다.
         </div>
         <div class="field">
-          <label>제약사 <span class="text-red-400">*</span></label>
+          <label>약품명 <span class="text-red-400">*</span></label>
+          <input id="ai-drug-name" type="text" placeholder="예: 타이레놀, 판콜에이, 훼스탈골드정"
+            style="border:1.5px solid #e2e8f0;border-radius:10px;padding:9px 12px;font-size:14px;width:100%;"
+            onkeydown="if(event.key==='Enter') document.getElementById('ai-analyze-btn').click()"/>
+        </div>
+        <div class="field">
+          <label>제약사 <span class="text-slate-400 font-normal">(선택)</span></label>
           <select id="ai-mfr" style="border:1.5px solid #e2e8f0;border-radius:10px;padding:9px 12px;font-size:14px;width:100%;">
-            <option value="">선택해주세요</option>
+            <option value="">자동 감지</option>
             <option>동아제약</option><option>한미약품</option><option>종근당</option>
             <option>유한양행</option><option>보령제약</option><option>광동제약</option>
             <option>한국얀센</option><option>GSK</option><option>기타</option>
           </select>
         </div>
         <div class="field">
-          <label>제품 이미지 URL <span class="text-slate-400 font-normal">(선택)</span></label>
+          <label>제품 이미지 URL <span class="text-slate-400 font-normal">(선택 · 식약처에서 자동 감지)</span></label>
           <input id="ai-image-url" type="url" placeholder="https://www.donga.co.kr/.../tylenol.jpg"
             style="border:1.5px solid #e2e8f0;border-radius:10px;padding:9px 12px;font-size:14px;width:100%;"/>
-          <div id="ai-img-preview" class="mt-2 rounded-xl overflow-hidden bg-slate-50" style="display:none;max-height:120px;align-items:center;justify-content:center;">
-            <img id="ai-img-thumb" src="" class="max-h-[120px] max-w-full object-contain rounded-xl" onerror="this.parentElement.style.display='none'"/>
-          </div>
-          <button onclick="previewAIImage()" class="mt-1.5 text-xs text-teal-600 font-semibold hover:underline">미리보기 확인</button>
         </div>
       </div>
 
@@ -544,8 +739,8 @@ const SUPABASE_ANON = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFz
 /* ══════════════════════════════════════
    앱 상태
 ══════════════════════════════════════ */
-// 게시판 전용 Worker URL (pharmacy-board — Cloudflare Workers)
-const WORKER_URL   = 'https://pharmacy-board.speed0324.workers.dev';
+// Cloudflare Worker (pharmacy-proxy 공용)
+const WORKER_URL   = 'https://pharmacy-proxy.speed0324.workers.dev';
 const _urlAdminMode = new URLSearchParams(location.search).get('mode') === 'admin';
 let isAdminMode = false;   // 비밀번호 확인 후 true로 변경
 
@@ -582,6 +777,7 @@ window.addEventListener('DOMContentLoaded', () => {
   });
   loadDrugs();
   syncAuthUI();
+  initMfdsKey(); // Supabase에서 식약처 API 키 자동 로드
   // 북마클릿에서 넘어온 URL 자동 처리 (?scrape=URL)
   const _scrapeUrl = new URLSearchParams(location.search).get('scrape');
   window._pendingScrapeUrl = _scrapeUrl || null;  // 비밀번호 입력 후에도 접근 가능하도록 전역 저장
@@ -614,25 +810,36 @@ function showView(name) {
   document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
   document.getElementById('view-' + name).classList.add('active');
   window.scrollTo(0, 0);
-  if (name === 'settings') loadSettingsDrugList();
+  if (name === 'settings') { loadSettingsDrugList(); loadMfdsKeyInput(); }
 }
 
 /* ══════════════════════════════════════
    데이터 로드
 ══════════════════════════════════════ */
 async function loadDrugs() {
-  document.getElementById('loading-state').classList.remove('hidden');
+  const loadEl = document.getElementById('loading-state');
+  loadEl.innerHTML = '<div class="text-4xl mb-3 animate-pulse">⏳</div><div class="text-sm">불러오는 중...</div>';
+  loadEl.classList.remove('hidden');
   document.getElementById('drug-grid').innerHTML = '';
   try {
-    const { data, error } = await sb.from('drugs').select('*').order('total_downloads', { ascending: false });
+    const { data, error } = await Promise.race([
+      sb.from('drugs').select('*').order('created_at', { ascending: false }).then(r => r),
+      new Promise((_, rej) => setTimeout(() =>
+        rej(new Error('연결 시간 초과\nSupabase 프로젝트가 일시 중지됐을 수 있습니다\nsupabase.com → 프로젝트 → Restore 클릭')), 12000))
+    ]);
     if (error) throw error;
     drugs = data || [];
+    loadEl.classList.add('hidden');
   } catch(e) {
-    console.error(e);
+    console.error('loadDrugs:', e);
     drugs = [];
-    showToast('⚠️ 데이터 로드 실패: ' + (e.message || ''));
+    loadEl.innerHTML = `
+      <div class="text-3xl mb-3">⚠️</div>
+      <div class="text-sm font-bold text-red-500 mb-2">데이터 로드 실패</div>
+      <div class="text-xs text-slate-400 mb-4 whitespace-pre-line">${e.message || '네트워크 오류'}</div>
+      <button onclick="loadDrugs()" class="btn-primary px-6 py-2 text-sm">🔄 다시 시도</button>`;
+    loadEl.classList.remove('hidden');
   }
-  document.getElementById('loading-state').classList.add('hidden');
   renderDrugs();
 }
 
@@ -816,9 +1023,13 @@ function openDrugDetail(d) {
 /* ══════════════════════════════════════
    다운로드 (키오스크 가져오기)
 ══════════════════════════════════════ */
+// 키오스크 URL 설정 (설정 페이지에서 변경 가능)
+const KIOSK_URLS = {
+  shop1: localStorage.getItem('_kioskUrl_shop1') || 'https://real0741-web.github.io/local-pharmacy/',
+  shop2: localStorage.getItem('_kioskUrl_shop2') || '',
+};
+
 async function downloadVersion(versionId) {
-  // 버전 데이터 찾기
-  const vEl = document.querySelector(`[onclick="downloadVersion('${versionId}')"]`);
   const versionsData = await sb.from('drug_versions').select('*').eq('id', versionId).single();
   if (versionsData.error || !versionsData.data) { showToast('❌ 버전 데이터 오류'); return; }
   const v = versionsData.data;
@@ -834,23 +1045,93 @@ async function downloadVersion(versionId) {
       info:           v.dosage || '',
       pharmacistNote: v.pharmacist_note || '',
       imageUrl:       v.image_url || '',
-      price:          0,   // 가격은 각 약국이 직접 설정
+      price:          0,
       list:           0,
     }
   };
 
+  // 다운로드 카운트 증가 (fire-and-forget)
+  sb.rpc('increment_version_downloads', { p_version_id: versionId }).catch(async () => {
+    const { data: cur } = await sb.from('drug_versions').select('downloads_count').eq('id', versionId).single();
+    await sb.from('drug_versions').update({ downloads_count: (cur?.downloads_count||0)+1 }).eq('id', versionId);
+  });
+
+  // 키오스크 선택 팝업 표시
+  showKioskSelector(exportData);
+  if (currentDrug) setTimeout(() => loadVersions(currentDrug.id), 1000);
+}
+
+function showKioskSelector(exportData) {
+  // 기존 팝업 제거
+  var old = document.getElementById('kiosk-selector-popup');
+  if (old) old.remove();
+
+  const encoded = btoa(encodeURIComponent(JSON.stringify(exportData)));
+  const shop1Url = KIOSK_URLS.shop1;
+  const shop2Url = KIOSK_URLS.shop2;
+
+  const popup = document.createElement('div');
+  popup.id = 'kiosk-selector-popup';
+  popup.className = 'fixed inset-0 z-[200] bg-black/40 flex items-end justify-center p-4';
+  popup.innerHTML = `
+    <div class="bg-white rounded-2xl shadow-2xl w-full max-w-sm p-5 fade-in">
+      <h3 class="font-extrabold text-slate-800 text-base mb-1">📥 키오스크로 가져오기</h3>
+      <p class="text-xs text-slate-400 mb-4">"<strong>${exportData.drug.name}</strong>" — 어느 키오스크에 추가할까요?</p>
+      <div class="space-y-2 mb-4">
+        ${shop1Url ? `
+        <button onclick="openKiosk('${shop1Url}','${encoded}')"
+          class="w-full flex items-center gap-3 px-4 py-3 rounded-xl border-2 border-teal-400 bg-teal-50 hover:bg-teal-100 transition-all text-left">
+          <span class="text-xl">🏪</span>
+          <div>
+            <div class="font-bold text-teal-800 text-sm">1호점 키오스크</div>
+            <div class="text-xs text-slate-400 truncate">${shop1Url}</div>
+          </div>
+        </button>` : ''}
+        ${shop2Url ? `
+        <button onclick="openKiosk('${shop2Url}','${encoded}')"
+          class="w-full flex items-center gap-3 px-4 py-3 rounded-xl border-2 border-purple-400 bg-purple-50 hover:bg-purple-100 transition-all text-left">
+          <span class="text-xl">🏪</span>
+          <div>
+            <div class="font-bold text-purple-800 text-sm">2호점 키오스크</div>
+            <div class="text-xs text-slate-400 truncate">${shop2Url}</div>
+          </div>
+        </button>` : `
+        <div class="w-full flex items-center gap-3 px-4 py-3 rounded-xl border border-dashed border-slate-200 text-slate-400 text-sm">
+          <span class="text-xl">🏪</span>
+          <div>
+            <div class="font-semibold text-slate-400 text-sm">2호점 키오스크</div>
+            <div class="text-xs">설정에서 URL을 등록하세요</div>
+          </div>
+        </div>`}
+      </div>
+      <button onclick="copyExportData(${JSON.stringify(JSON.stringify(exportData)).replace(/</g,'\\u003c')})"
+        class="w-full py-2 rounded-xl border border-slate-200 text-sm text-slate-500 hover:bg-slate-50 mb-2">
+        📋 클립보드에 복사 (수동 붙여넣기)
+      </button>
+      <button onclick="document.getElementById('kiosk-selector-popup').remove()"
+        class="w-full py-2 rounded-xl bg-slate-100 text-sm text-slate-500 hover:bg-slate-200">
+        취소
+      </button>
+    </div>
+  `;
+  document.body.appendChild(popup);
+  popup.addEventListener('click', function(e){ if(e.target === popup) popup.remove(); });
+}
+
+function openKiosk(baseUrl, encoded) {
+  document.getElementById('kiosk-selector-popup')?.remove();
+  const url = baseUrl.replace(/\/$/, '') + '/?mode=admin&importDrug=' + encoded;
+  window.open(url, '_blank');
+  showToast('✅ 키오스크가 열렸습니다! PIN 입력 후 편집창이 자동으로 열립니다.');
+}
+
+async function copyExportData(jsonStr) {
+  document.getElementById('kiosk-selector-popup')?.remove();
   try {
-    await navigator.clipboard.writeText(JSON.stringify(exportData, null, 2));
-    // 다운로드 카운트 증가
-    await sb.rpc('increment_version_downloads', { p_version_id: versionId }).catch(async () => {
-      const { data: cur } = await sb.from('drug_versions').select('downloads_count').eq('id', versionId).single();
-      await sb.from('drug_versions').update({ downloads_count: (cur?.downloads_count||0)+1 }).eq('id', versionId);
-    });
-    showToast('✅ 클립보드 복사 완료! 키오스크 → "게시판에서 붙여넣기"');
-    // 버전 목록 새로고침
-    if (currentDrug) setTimeout(() => loadVersions(currentDrug.id), 800);
+    await navigator.clipboard.writeText(jsonStr);
+    showToast('✅ 클립보드에 복사됐습니다!');
   } catch(e) {
-    prompt('아래 내용을 키오스크에 붙여넣으세요:', JSON.stringify(exportData));
+    prompt('아래 내용을 키오스크에 붙여넣으세요:', jsonStr);
   }
 }
 
@@ -859,7 +1140,15 @@ async function downloadVersion(versionId) {
    버전 등록 모달
 ══════════════════════════════════════ */
 function openVersionUpload(prefill) {
-  if (!currentUser) { openAuth(); return; }
+  if (typeof _boardDrugAI !== 'undefined' && _boardDrugAI &&
+      (_boardDrugAI.efficacy || _boardDrugAI.note || _boardDrugAI.imageUrl)) {
+    prefill = prefill || {};
+    if (!prefill.efficacy        && _boardDrugAI.efficacy)  prefill.efficacy        = _boardDrugAI.efficacy;
+    if (!prefill.dosage          && _boardDrugAI.dosage)    prefill.dosage          = _boardDrugAI.dosage;
+    if (!prefill.pharmacist_note && _boardDrugAI.note)      prefill.pharmacist_note = _boardDrugAI.note;
+    if (!prefill.image_url       && _boardDrugAI.imageUrl)  prefill.image_url       = _boardDrugAI.imageUrl;
+    _boardDrugAI = {};
+  }
   if (!currentDrug) return;
   document.getElementById('vm-title').textContent     = '버전 등록';
   document.getElementById('vm-drug-name').textContent = currentDrug.canonical_name;
@@ -913,7 +1202,7 @@ async function submitVersion() {
     }
   }
   const payload = {
-    drug_id: drugId, user_id: currentUser.id,
+    drug_id: drugId, user_id: currentUser?.id || null,
     pharmacy_name: currentProfile?.pharmacy_name || '익명약국',
     image_url: uploadedUrls[0]||null, image_url_2: uploadedUrls[1]||null, image_url_3: uploadedUrls[2]||null,
     efficacy, dosage, pharmacist_note: note||null,
@@ -926,6 +1215,68 @@ async function submitVersion() {
   closeVersionModal();
   showToast('버전이 등록되었습니다!');
   if (currentDrug) loadVersions(currentDrug.id);
+}
+
+async function loadSettingsDrugList() {
+  // 키오스크 URL 입력창 채우기
+  var el1 = document.getElementById('kiosk-url-shop1');
+  var el2 = document.getElementById('kiosk-url-shop2');
+  if (el1) el1.value = KIOSK_URLS.shop1 || 'https://real0741-web.github.io/local-pharmacy/';
+  if (el2) el2.value = KIOSK_URLS.shop2 || '';
+
+  // 북마클릿 링크 동적 세팅
+  var boardUrl = window.location.origin + window.location.pathname;
+  var bmCode = '(function(){var u='+JSON.stringify(boardUrl)+';var w=window.open(u+"?mode=admin","_board_ai","width=480,height=780,left=50,top=50");if(!w){alert("팝업이 차단되었습니다.");}else{localStorage.setItem("_bmSourceUrl",location.href);}})();';
+  var bmEl = document.getElementById('bookmarklet-link');
+  if (bmEl) bmEl.href = 'javascript:' + bmCode;
+
+  var el = document.getElementById('settings-drug-list');
+  if (!el) return;
+  el.innerHTML = '<div class="text-slate-400 text-sm py-4 text-center animate-pulse">불러오는 중...</div>';
+  var result = await sb.from('drugs').select('id, canonical_name, version_count, emoji').order('created_at', { ascending: false });
+  if (result.error || !result.data) { el.innerHTML = '<div class="text-red-400 text-sm py-2">로드 실패</div>'; return; }
+  if (!result.data.length) { el.innerHTML = '<div class="text-slate-400 text-sm py-4 text-center">등록된 약품이 없습니다.</div>'; return; }
+  el.innerHTML = result.data.map(function(d){
+    return '<div class="flex items-center justify-between py-3">'
+      + '<div class="flex items-center gap-2"><span class="text-lg">'+(d.emoji||'💊')+'</span>'
+      + '<span class="text-sm font-semibold text-slate-700">'+d.canonical_name+'</span>'
+      + '<span class="text-xs text-slate-400">버전 '+d.version_count+'개</span></div>'
+      + '<button onclick="aiGenerateSingleVersion('+d.id+',\''+d.canonical_name+'\')" '
+      + 'class="text-xs px-3 py-1.5 rounded-lg bg-teal-50 text-teal-700 font-semibold hover:bg-teal-100">🤖 AI 생성</button>'
+      + '</div>';
+  }).join('');
+}
+
+function saveKioskUrls() {
+  var s1 = (document.getElementById('kiosk-url-shop1')?.value||'').trim();
+  var s2 = (document.getElementById('kiosk-url-shop2')?.value||'').trim();
+  if (s1) { localStorage.setItem('_kioskUrl_shop1', s1); KIOSK_URLS.shop1 = s1; }
+  if (s2) { localStorage.setItem('_kioskUrl_shop2', s2); KIOSK_URLS.shop2 = s2; }
+  else    { localStorage.removeItem('_kioskUrl_shop2');   KIOSK_URLS.shop2 = ''; }
+  showToast('✅ 키오스크 URL 저장됨!');
+}
+
+async function aiGenerateSingleVersion(drugId, drugName) {
+  const btn = document.querySelector(`button[onclick*="${drugId}"]`);
+  if (btn) { btn.disabled = true; btn.textContent = '생성 중...'; }
+  try {
+    // 키오스크와 동일한 analyzeProduct (식약처+네이버+AI)
+    const r = await callAnalyzeProduct(drugName, '');
+    const ins = await sb.from('drug_versions').insert({
+      drug_id: drugId, user_id: currentUser?.id || null,
+      pharmacy_name: currentProfile?.pharmacy_name || '관리자',
+      efficacy: r.tagline || '효능 정보 없음',
+      dosage:   r.dosage  || '제품 동봉 설명서 참조',
+      pharmacist_note: r.note || null,
+      image_url: r.imageUrl || null,
+    });
+    if (ins.error) throw new Error(ins.error.message);
+    showToast('✅ ' + drugName + ' AI 버전 생성 완료!');
+    loadSettingsDrugList();
+  } catch(e) {
+    showToast('❌ ' + drugName + ': ' + e.message);
+    if (btn) { btn.disabled = false; btn.textContent = '🤖 AI 생성'; }
+  }
 }
 
 async function editVersion(versionId) {
@@ -947,7 +1298,6 @@ async function deleteVersion(versionId) {
 async function copyVersionToNew(versionId) {
   const { data, error } = await sb.from('drug_versions').select('*').eq('id', versionId).single();
   if (error || !data) { showToast('버전 데이터를 불러올 수 없습니다.'); return; }
-  if (!currentUser) { openAuth(); return; }
   openVersionUpload({ efficacy: data.efficacy, dosage: data.dosage, pharmacist_note: data.pharmacist_note, image_url: data.image_url });
   document.getElementById('vm-version-id').value = '';
 }
@@ -1030,31 +1380,142 @@ function updateHeaderAuth() {
   const adminBadge = document.getElementById('admin-badge');
   const aiBtn      = document.getElementById('ai-register-btn');
   const uploadBtn  = document.getElementById('upload-btn');
-  if (isAdminMode) adminBadge.classList.remove('hidden');
-  else             adminBadge.classList.add('hidden');
-  if (currentUser) {
-    const name = (currentProfile && currentProfile.pharmacy_name) || (currentUser.email ? currentUser.email.split('@')[0] : '약사');
-    const settingsBtn = isAdminMode
-      ? '<button onclick="showView(\'settings\')" title="설정" class="text-lg leading-none hover:opacity-70 transition-opacity" style="background:none;border:none;cursor:pointer;">⚙️</button>'
-      : '';
-    el.innerHTML = '<span class="text-xs text-slate-500 hidden sm:block">' + name + '</span>'
-      + settingsBtn
-      + '<button onclick="signOut()" class="text-xs font-semibold text-slate-500 border border-slate-200 px-3 py-1.5 rounded-xl hover:bg-slate-50">로그아웃</button>';
-    if (isAdminMode) {
-      aiBtn.classList.remove('hidden');
-      uploadBtn.classList.remove('hidden');
-    } else {
-      aiBtn.classList.add('hidden');
-      uploadBtn.classList.add('hidden');
+  const noticebar  = document.getElementById('admin-notice-bar');
+  const noticeMsg  = document.getElementById('admin-notice-msg');
+  if (isAdminMode) {
+    if (adminBadge) adminBadge.classList.remove('hidden');
+    if (aiBtn)      aiBtn.classList.remove('hidden');
+    if (uploadBtn)  uploadBtn.classList.remove('hidden');
+    if (el) el.innerHTML = '<button onclick="showView(\'settings\')" class="flex items-center gap-1 text-xs font-bold bg-yellow-400 text-yellow-900 px-3 py-1.5 rounded-xl hover:bg-yellow-300 transition-all" style="border:none;cursor:pointer;">⚙️ 설정</button>';
+    // 식약처 API 키 미등록 여부 확인
+    if (noticebar && noticeMsg) {
+      const hasKey = !!(localStorage.getItem('_mfdsApiKey') || '').trim();
+      if (!hasKey) {
+        noticeMsg.textContent = '식약처 API 키가 등록되지 않았습니다. 약품 검색을 사용하려면 API 키를 입력해주세요.';
+        noticebar.classList.remove('hidden');
+      } else {
+        noticeMsg.textContent = '관리자 기능이 활성화됐습니다.';
+        noticebar.classList.remove('hidden');
+        setTimeout(() => noticebar.classList.add('hidden'), 3000);
+      }
     }
   } else {
-    el.innerHTML = '<button onclick="openAuth()" class="btn-primary px-4 py-1.5 text-sm">로그인</button>';
-    aiBtn.classList.add('hidden');
-    uploadBtn.classList.add('hidden');
+    if (adminBadge) adminBadge.classList.add('hidden');
+    if (aiBtn)      aiBtn.classList.add('hidden');
+    if (uploadBtn)  uploadBtn.classList.add('hidden');
+    if (el)         el.innerHTML = '';
+    if (noticebar)  noticebar.classList.add('hidden');
   }
 }
 
 function syncAuthUI() {}
+
+/* ══════════════════════════════════════
+   관리자 비밀번호 게이트
+══════════════════════════════════════ */
+function getAdminPinCached() {
+  const cached = localStorage.getItem('_boardAdminPinCache') || '1234';
+  (async () => {
+    try {
+      const { data } = await sb.from('board_settings').select('value').eq('key','admin_password').single();
+      if (data?.value) localStorage.setItem('_boardAdminPinCache', data.value);
+    } catch(e) {}
+  })();
+  return cached;
+}
+function getAdminPwCached() { return getAdminPinCached(); } // 하위 호환
+
+var _pinEntered = '';
+
+function showAdminPwGate() {
+  var old = document.getElementById('_admin-pw-gate');
+  if (old) old.remove();
+  _pinEntered = '';
+  var overlay = document.createElement('div');
+  overlay.id = '_admin-pw-gate';
+  overlay.style.cssText = 'position:fixed;inset:0;z-index:9999;background:rgba(15,23,42,0.75);display:flex;align-items:center;justify-content:center;padding:16px';
+  var nums = [1,2,3,4,5,6,7,8,9].map(function(n){
+    return '<button onclick="_pinPress(\''+n+'\')" style="background:#f8fafc;border:1.5px solid #e2e8f0;border-radius:14px;padding:18px 0;font-size:22px;font-weight:700;color:#1e293b;cursor:pointer" ontouchstart="this.style.background=\'#e2e8f0\'" ontouchend="this.style.background=\'#f8fafc\'" onmousedown="this.style.background=\'#e2e8f0\'" onmouseup="this.style.background=\'#f8fafc\'">'+n+'</button>';
+  }).join('');
+  overlay.innerHTML = '<div style="background:#fff;border-radius:24px;padding:32px 24px;width:100%;max-width:300px;box-shadow:0 25px 60px rgba(0,0,0,0.3);text-align:center">'
+    + '<div style="font-size:32px;margin-bottom:8px">🔐</div>'
+    + '<h2 style="font-size:17px;font-weight:800;color:#0f172a;margin:0 0 4px">관리자 PIN</h2>'
+    + '<p style="font-size:12px;color:#94a3b8;margin:0 0 20px">4자리 숫자를 입력하세요</p>'
+    + '<div id="_pin-dots" style="display:flex;justify-content:center;gap:14px;margin-bottom:8px">'
+    +   '<div class="_dot" style="width:14px;height:14px;border-radius:50%;background:#e2e8f0;transition:background .15s"></div>'
+    +   '<div class="_dot" style="width:14px;height:14px;border-radius:50%;background:#e2e8f0;transition:background .15s"></div>'
+    +   '<div class="_dot" style="width:14px;height:14px;border-radius:50%;background:#e2e8f0;transition:background .15s"></div>'
+    +   '<div class="_dot" style="width:14px;height:14px;border-radius:50%;background:#e2e8f0;transition:background .15s"></div>'
+    + '</div>'
+    + '<div id="_admin-pw-error" style="color:#ef4444;font-size:12px;min-height:18px;margin-bottom:12px"></div>'
+    + '<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px">'
+    + nums
+    + '<button onclick="_pinPress(\'del\')" style="background:#f8fafc;border:1.5px solid #e2e8f0;border-radius:14px;padding:18px 0;font-size:18px;color:#64748b;cursor:pointer" onmousedown="this.style.background=\'#e2e8f0\'" onmouseup="this.style.background=\'#f8fafc\'">⌫</button>'
+    + '<button onclick="_pinPress(\'0\')" style="background:#f8fafc;border:1.5px solid #e2e8f0;border-radius:14px;padding:18px 0;font-size:22px;font-weight:700;color:#1e293b;cursor:pointer" onmousedown="this.style.background=\'#e2e8f0\'" onmouseup="this.style.background=\'#f8fafc\'">0</button>'
+    + '<button onclick="document.getElementById(\'_admin-pw-gate\').remove()" style="background:#f8fafc;border:1.5px solid #e2e8f0;border-radius:14px;padding:18px 0;font-size:13px;color:#94a3b8;cursor:pointer">취소</button>'
+    + '</div></div>';
+  document.body.appendChild(overlay);
+}
+
+function _pinPress(val) {
+  var errEl = document.getElementById('_admin-pw-error');
+  if (errEl) errEl.textContent = '';
+  if (val === 'del') { _pinEntered = _pinEntered.slice(0,-1); }
+  else { if (_pinEntered.length >= 4) return; _pinEntered += val; }
+  var dots = document.querySelectorAll('._dot');
+  dots.forEach(function(d,i){ d.style.background = i < _pinEntered.length ? '#0d9488' : '#e2e8f0'; });
+  if (_pinEntered.length === 4) setTimeout(submitAdminPwGate, 150);
+}
+
+function submitAdminPwGate() {
+  var errEl = document.getElementById('_admin-pw-error');
+  if (_pinEntered === getAdminPinCached()) {
+    localStorage.setItem('boardAdminVerified','true');
+    isAdminMode = true;
+    var gate = document.getElementById('_admin-pw-gate');
+    if (gate) gate.remove();
+    updateHeaderAuth();
+    showToast('✅ 관리자 모드 활성화!');
+    var _su = window._pendingScrapeUrl;
+    if (_su) {
+      setTimeout(function(){
+        openAIRegisterModal(); switchAITab('url');
+        var urlEl = document.getElementById('ai-page-url');
+        if (urlEl) urlEl.value = decodeURIComponent(_su);
+        showToast('URL이 자동으로 입력됐습니다. AI 분석을 시작하세요!');
+      }, 300);
+    }
+  } else {
+    _pinEntered = '';
+    var dots = document.querySelectorAll('._dot');
+    dots.forEach(function(d){ d.style.background='#ef4444'; });
+    if (errEl) errEl.textContent = 'PIN이 틀렸습니다';
+    setTimeout(function(){ dots.forEach(function(d){ d.style.background='#e2e8f0'; }); }, 600);
+  }
+}
+
+function changeAdminPw() {
+  var curEl = document.getElementById('pw-change-cur');
+  var newEl = document.getElementById('pw-change-new');
+  var errEl = document.getElementById('pw-change-error');
+  var btn   = document.getElementById('pw-change-btn');
+  if (!curEl||!newEl) return;
+  var cur = curEl.value.trim(), nw = newEl.value.trim();
+  errEl.classList.add('hidden');
+  if (!cur||!nw) { errEl.textContent='현재/새 PIN을 모두 입력해주세요.'; errEl.classList.remove('hidden'); return; }
+  if (cur !== getAdminPinCached()) { errEl.textContent='현재 PIN이 틀렸습니다.'; errEl.classList.remove('hidden'); return; }
+  if (!/^\d{4,8}$/.test(nw)) { errEl.textContent='새 PIN은 숫자 4~8자리여야 합니다.'; errEl.classList.remove('hidden'); return; }
+  btn.disabled=true; btn.textContent='변경 중...';
+  sb.from('board_settings').upsert({key:'admin_password',value:nw,updated_at:new Date().toISOString()})
+    .then(function(r){
+      btn.disabled=false; btn.textContent='변경하기';
+      if (r.error){ errEl.textContent='저장 실패: '+r.error.message; errEl.classList.remove('hidden'); return; }
+      localStorage.setItem('_boardAdminPinCache', nw);
+      curEl.value=''; newEl.value='';
+      showToast('✅ PIN이 변경됐습니다!');
+    });
+}
+
 
 /* ══════════════════════════════════════
    인증 모달
@@ -1135,10 +1596,267 @@ async function signOut() {
 }
 
 /* ══════════════════════════════════════
+   키오스크형 약품 등록 모달 (#reg-modal)
+══════════════════════════════════════ */
+var _regData = {};   // AI 분석 결과 임시 보관
+
+function openRegModal() {
+  // 초기화
+  _regData = {};
+  document.getElementById('reg-name').value    = '';
+  document.getElementById('reg-error').classList.add('hidden');
+  document.getElementById('reg-result').classList.add('hidden');
+  document.getElementById('reg-footer-pre').classList.remove('hidden');
+  document.getElementById('reg-footer-post').classList.add('hidden');
+  document.getElementById('reg-status').textContent = '약품명을 입력하고 AI를 눌러주세요';
+  const aiBtn = document.getElementById('reg-ai-btn');
+  aiBtn.disabled = false;
+  document.getElementById('reg-ai-icon').textContent  = '🤖';
+  document.getElementById('reg-ai-label').textContent = 'AI 분석';
+  document.getElementById('reg-modal').classList.remove('hidden');
+  setTimeout(() => document.getElementById('reg-name').focus(), 120);
+}
+
+function closeRegModal() {
+  document.getElementById('reg-modal').classList.add('hidden');
+}
+
+async function regAI() {
+  const nameVal = (document.getElementById('reg-name').value || '').trim();
+  const errEl   = document.getElementById('reg-error');
+  errEl.classList.add('hidden');
+
+  if (!nameVal) {
+    errEl.textContent = '약품명을 입력해주세요.';
+    errEl.classList.remove('hidden');
+    return;
+  }
+
+  const aiBtn = document.getElementById('reg-ai-btn');
+  aiBtn.disabled = true;
+  document.getElementById('reg-ai-icon').textContent  = '⏳';
+  document.getElementById('reg-ai-label').textContent = '분석 중...';
+  document.getElementById('reg-status').textContent   = '🔍 식약처 + 네이버 + AI 검색 중...';
+
+  try {
+    const r = await callAnalyzeProduct(nameVal, '');
+    _regData = r;
+
+    // 결과 채우기
+    document.getElementById('reg-emoji').value    = r.emoji    || '💊';
+    document.getElementById('reg-name2').value    = nameVal;
+    document.getElementById('reg-source-badge').textContent = r.source === '식약처' ? '식약처✓' : r.source || 'AI';
+    document.getElementById('reg-efficacy').value = r.tagline  || '';
+    document.getElementById('reg-dosage').value   = r.dosage   || '';
+    document.getElementById('reg-note').value     = r.note     || '';
+
+    // 카테고리 선택
+    const catSel = document.getElementById('reg-cat');
+    const catMatch = Array.from(catSel.options).find(o => o.value === r.category);
+    catSel.value = catMatch ? r.category : '기타';
+
+    // 태그
+    if (r.badges && r.badges.length) {
+      document.getElementById('reg-tags').value = r.badges.join(', ');
+    }
+
+    // 이미지
+    const imgUrl = r.imageUrl || '';
+    if (imgUrl) {
+      document.getElementById('reg-img').src = imgUrl;
+      document.getElementById('reg-img-url').value = imgUrl;
+      document.getElementById('reg-img-wrap').classList.remove('hidden');
+      document.getElementById('reg-img-url-only').classList.add('hidden');
+    } else {
+      document.getElementById('reg-img-wrap').classList.add('hidden');
+      document.getElementById('reg-img-url-only').classList.remove('hidden');
+    }
+
+    // 결과 영역 + 하단 버튼 전환
+    document.getElementById('reg-result').classList.remove('hidden');
+    document.getElementById('reg-footer-pre').classList.add('hidden');
+    document.getElementById('reg-footer-post').classList.remove('hidden');
+    document.getElementById('reg-status').textContent = '✅ AI 분석 완료 · 수정 후 등록하세요';
+
+    aiBtn.disabled = false;
+    document.getElementById('reg-ai-icon').textContent  = '🔄';
+    document.getElementById('reg-ai-label').textContent = '재분석';
+
+  } catch(e) {
+    errEl.textContent = '분석 실패: ' + (e.message || '서버 오류');
+    errEl.classList.remove('hidden');
+    document.getElementById('reg-status').textContent = '약품명을 입력하고 AI를 눌러주세요';
+    aiBtn.disabled = false;
+    document.getElementById('reg-ai-icon').textContent  = '🤖';
+    document.getElementById('reg-ai-label').textContent = 'AI 분석';
+  }
+}
+
+async function regSubmit(continueMode) {
+  const btn   = document.getElementById('reg-submit-btn');
+  const errEl = document.getElementById('reg-error');
+  errEl.classList.add('hidden');
+
+  const name     = (document.getElementById('reg-name2').value   || document.getElementById('reg-name').value || '').trim();
+  const emoji    = (document.getElementById('reg-emoji').value    || '💊').trim();
+  const cat      = (document.getElementById('reg-cat').value      || '기타').trim();
+  const mfr      = (document.getElementById('reg-mfr').value      || '').trim();
+  const efficacy = (document.getElementById('reg-efficacy').value || '').trim();
+  const dosage   = (document.getElementById('reg-dosage').value   || '').trim();
+  const note     = (document.getElementById('reg-note').value     || '').trim();
+  const tagsRaw  = (document.getElementById('reg-tags').value     || '').trim();
+  const imgUrl   = (document.getElementById('reg-img-url')?.value  || document.getElementById('reg-img-url2')?.value || '').trim();
+
+  if (!name) {
+    errEl.textContent = '약품명을 입력해주세요.';
+    errEl.classList.remove('hidden'); return;
+  }
+
+  if (btn) { btn.disabled = true; btn.textContent = '등록 중...'; }
+  document.getElementById('reg-status').textContent = '⏳ Supabase에 저장 중...';
+
+  // 10초 타임아웃 래퍼
+  const withTimeout = (promise, ms, label) =>
+    Promise.race([
+      promise,
+      new Promise((_, rej) => setTimeout(() => rej(new Error(
+        label + ' 시간 초과 (5초) — RLS 정책 문제일 수 있습니다'
+      )), ms))
+    ]);
+
+  try {
+    // 1) 제약사 처리
+    let mfrId = null;
+    if (mfr && mfr !== '기타') {
+      const { data: mfrData } = await withTimeout(
+        sb.from('manufacturers').select('id').eq('name', mfr).maybeSingle(), 5000, '제약사 조회');
+      if (!mfrData) {
+        const { data: newMfr } = await withTimeout(
+          sb.from('manufacturers').insert({ name: mfr }).select().single(), 5000, '제약사 등록');
+        mfrId = newMfr?.id || null;
+      } else {
+        mfrId = mfrData.id;
+      }
+    }
+
+    // 2) drugs 테이블에 INSERT
+    const tagArr = tagsRaw ? tagsRaw.split(',').map(t => t.trim()).filter(Boolean) : [];
+    const { data: drugRow, error: drugErr } = await withTimeout(
+      sb.from('drugs').insert({
+        canonical_name:  name,
+        emoji:           emoji,
+        category:        cat,
+        manufacturer_id: mfrId,
+        tags:            tagArr,
+        created_by:      currentUser?.id || null,
+      }).select().single(), 5000, 'drugs INSERT');
+
+    if (drugErr) throw new Error('drugs 저장 실패: ' + (drugErr.message || drugErr.code || JSON.stringify(drugErr)));
+
+    // 3) drug_versions 테이블에 INSERT
+    const { error: verErr } = await withTimeout(
+      sb.from('drug_versions').insert({
+        drug_id:    drugRow.id,
+        version:    1,
+        tagline:    efficacy,
+        info:       dosage,
+        note:       note,
+        image_url:  imgUrl || null,
+        created_by: currentUser?.id || null,
+      }), 5000, 'drug_versions INSERT');
+
+    if (verErr) throw new Error('버전 저장 실패: ' + (verErr.message || verErr.code || JSON.stringify(verErr)));
+
+    showToast('🎉 ' + name + ' 등록 완료!');
+    await loadDrugs();
+
+    if (continueMode) {
+      // 모달 유지, 이름 비우고 다음 약품 준비
+      document.getElementById('reg-name').value = '';
+      document.getElementById('reg-result').classList.add('hidden');
+      document.getElementById('reg-footer-pre').classList.remove('hidden');
+      document.getElementById('reg-footer-post').classList.add('hidden');
+      document.getElementById('reg-status').textContent = '✅ 등록 완료! 다음 약품명을 입력하세요';
+      document.getElementById('reg-ai-icon').textContent  = '🤖';
+      document.getElementById('reg-ai-label').textContent = 'AI 분석';
+      document.getElementById('reg-name').focus();
+      _regData = {};
+    } else {
+      closeRegModal();
+    }
+
+  } catch(e) {
+    const msg = e.message || JSON.stringify(e) || '알 수 없는 오류';
+    errEl.innerHTML = '❌ 등록 실패:<br><code style="font-size:11px;word-break:break-all;">' + msg + '</code>';
+    errEl.classList.remove('hidden');
+    errEl.style.cssText = 'display:block;background:#fee2e2;border:2px solid #ef4444;border-radius:10px;padding:10px;font-size:13px;color:#dc2626;';
+    document.getElementById('reg-status').textContent = '❌ 등록 실패 — 위 오류 확인';
+    console.error('[regSubmit] 오류:', e);
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = '✅ 등록 완료'; }
+  }
+}
+
+async function regRegenNote() {
+  const nameVal = (document.getElementById('reg-name2').value || document.getElementById('reg-name').value || '').trim();
+  const btn     = document.getElementById('reg-regen-btn');
+  if (!nameVal) return;
+
+  const origText = btn.textContent;
+  btn.disabled = true;
+  btn.textContent = '⏳ 생성 중...';
+
+  try {
+    const efficacy = document.getElementById('reg-efficacy').value || '';
+    const dosage   = document.getElementById('reg-dosage').value   || '';
+
+    const res = await fetch(WORKER_URL + '/?action=summarizeDrug', {
+      method:  'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ drugName: nameVal, efficacy, dosage }),
+      signal: AbortSignal.timeout(20000),
+    });
+    const r = await res.json();
+    const note = r.pharmacistNote || r.note || r.summary || '';
+    if (note) {
+      document.getElementById('reg-note').value = note;
+      showToast('💬 약사 한마디 재생성 완료!');
+    }
+  } catch(e) {
+    showToast('재생성 실패: ' + (e.message || '서버 오류'));
+  } finally {
+    btn.disabled = false;
+    btn.textContent = origText;
+  }
+}
+
+function regImgPreview() {
+  const url = (document.getElementById('reg-img-url')?.value || '').trim();
+  if (url) document.getElementById('reg-img').src = url;
+}
+
+function regImgPreview2() {
+  const url = (document.getElementById('reg-img-url2')?.value || '').trim();
+  if (!url) return;
+  // URL이 생기면 img-wrap으로 전환
+  document.getElementById('reg-img').src = url;
+  document.getElementById('reg-img-wrap').classList.remove('hidden');
+  document.getElementById('reg-img-url').value = url;
+  document.getElementById('reg-img-url-only').classList.add('hidden');
+}
+
+/* ══════════════════════════════════════
    새 약품 등록 모달 (관리자)
 ══════════════════════════════════════ */
 function openNewDrugModal() {
-  if (!currentUser) { openAuth(); return; }
+  // 검색창 초기화
+  const si = document.getElementById('nd-search-input');
+  const ss = document.getElementById('nd-search-status');
+  const sr = document.getElementById('nd-search-results');
+  if (si) si.value = '';
+  if (ss) { ss.textContent = ''; ss.style.color = ''; }
+  if (sr) { sr.classList.add('hidden'); sr.innerHTML = ''; }
+  _boardDrugAI = {};
   document.getElementById('nd-name').value  = '';
   document.getElementById('nd-emoji').value = '💊';
   document.getElementById('nd-mfr').value   = '';
@@ -1155,18 +1873,33 @@ function closeNewDrugModal() {
 async function submitNewDrug() {
   const btn   = document.getElementById('nd-submit-btn');
   const errEl = document.getElementById('nd-error');
-  const name  = document.getElementById('nd-name').value.trim();
-  const emoji = document.getElementById('nd-emoji').value.trim() || '💊';
-  const mfr   = document.getElementById('nd-mfr').value;
-  const cat   = document.getElementById('nd-cat').value;
-  const tags  = document.getElementById('nd-tags').value.split(',').map(function(t){ return t.trim(); }).filter(Boolean);
+  const name    = (document.getElementById('nd-name')?.value || '').trim();
+  const mfr     = (document.getElementById('nd-mfr')?.value || '').trim();
+  const cat     = (document.getElementById('nd-cat')?.value || '').trim();
+  const emoji   = (document.getElementById('nd-emoji')?.value || '💊').trim();
+  const tags    = (document.getElementById('nd-tags')?.value || '').trim();
   errEl.classList.add('hidden');
   if (!name) { errEl.textContent = '약품명을 입력해주세요.'; errEl.classList.remove('hidden'); return; }
-  if (!mfr)  { errEl.textContent = '제약사를 선택해주세요.'; errEl.classList.remove('hidden'); return; }
   if (!cat)  { errEl.textContent = '카테고리를 선택해주세요.'; errEl.classList.remove('hidden'); return; }
   btn.disabled = true; btn.textContent = '등록 중...';
+  let mfrId = null;
+  if (mfr) {
+    let { data: mfrData } = await sb.from('manufacturers').select('id').eq('name', mfr).maybeSingle();
+    if (!mfrData) {
+      const { data: newMfr } = await sb.from('manufacturers').insert({ name: mfr }).select().single();
+      mfrId = newMfr?.id || null;
+    } else {
+      mfrId = mfrData.id;
+    }
+  }
+  const tagArr = tags ? tags.split(',').map(t => t.trim()).filter(Boolean) : [];
   const { data, error } = await sb.from('drugs').insert({
-    canonical_name: name, emoji: emoji, manufacturer_name: mfr, category: cat, func_tags: tags,
+    canonical_name: name,
+    emoji: emoji,
+    category: cat,
+    manufacturer_id: mfrId,
+    tags: tagArr,
+    created_by: currentUser?.id || null,
   }).select().single();
   btn.disabled = false; btn.textContent = '다음 — 버전 등록 →';
   if (error) { errEl.textContent = '오류: ' + error.message; errEl.classList.remove('hidden'); return; }
@@ -1182,7 +1915,6 @@ async function submitNewDrug() {
 var _aiCurrentTab = 'name';
 
 function openAIRegisterModal() {
-  if (!currentUser) { openAuth(); return; }
   document.getElementById('ai-register-modal').classList.remove('hidden');
   document.getElementById('ai-step-1').classList.remove('hidden');
   document.getElementById('ai-step-2').classList.add('hidden');
@@ -1195,21 +1927,25 @@ function closeAIRegisterModal() {
 
 function switchAITab(tab) {
   _aiCurrentTab = tab;
-  ['name','url','batch'].forEach(function(t) {
+  ['name','batch'].forEach(function(t) {
     const btn   = document.getElementById('tab-'+t+'-btn');
     const panel = document.getElementById('ai-tab-'+t);
+    if (!btn) return;
     if (t === tab) {
       btn.classList.add('bg-white','text-slate-700','shadow-sm');
       btn.classList.remove('text-slate-400');
-      panel.classList.remove('hidden');
+      if (panel) panel.classList.remove('hidden');
     } else {
       btn.classList.remove('bg-white','text-slate-700','shadow-sm');
       btn.classList.add('text-slate-400');
-      panel.classList.add('hidden');
+      if (panel) panel.classList.add('hidden');
     }
   });
+  // url 탭은 항상 숨김
+  var urlPanel = document.getElementById('ai-tab-url');
+  if (urlPanel) urlPanel.classList.add('hidden');
   const analyzeBtn = document.getElementById('ai-analyze-btn');
-  analyzeBtn.textContent = tab === 'batch' ? '📋 일괄 등록 시작' : '🔍 AI로 정보 채우기';
+  if (analyzeBtn) analyzeBtn.textContent = tab === 'batch' ? '📋 일괄 등록 시작' : '🔍 AI로 정보 채우기';
 }
 
 function previewAIImage() {
@@ -1220,76 +1956,215 @@ function previewAIImage() {
   else     { wrap.style.display = 'none'; }
 }
 
+/* ══════════════════════════════════════
+   AI analyzeProduct 헬퍼 (키오스크와 동일 파이프라인)
+══════════════════════════════════════ */
+const BOARD_CATEGORIES = [
+  { id: '소화기',      name: '소화기 · 위장약' },
+  { id: '통증·감기',  name: '통증 · 감기 · 해열' },
+  { id: '비타민·영양제', name: '비타민 · 영양제' },
+  { id: '눈·피부',    name: '눈 · 피부 · 외용약' },
+  { id: '상비약',     name: '상비약 · 응급처치' },
+  { id: '기타',       name: '기타' },
+];
+
+async function callAnalyzeProduct(drugName, imageUrl) {
+  const res = await fetch(WORKER_URL + '/?action=analyzeProduct', {
+    method:  'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      productName: drugName,
+      imageData:   imageUrl || '',
+      categories:  BOARD_CATEGORIES,
+    }),
+    signal: AbortSignal.timeout(28000),
+  });
+  if (!res.ok) {
+    let msg = '서버 오류 ' + res.status;
+    try { const j = await res.json(); msg = j.error || msg; } catch(_) {}
+    throw new Error(msg);
+  }
+  const r = await res.json();
+  if (r.error) throw new Error(r.error);
+  return {
+    tagline:  r.tagline  || r.info || '',
+    dosage:   r.info     || '',
+    note:     r.pharmacistNote || r.note || '',
+    emoji:    r.emoji    || r.suggestedEmoji || '💊',
+    category: r.suggestedCategoryId || '기타',
+    imageUrl: r.imageUrl || imageUrl || '',
+    source:   r._source  || 'AI',
+    badges:   r.badges   || r.suggestedBadges || [],
+  };
+}
+
 async function runAIAnalysis() {
   const errEl      = document.getElementById('ai-step1-error');
   const analyzeBtn = document.getElementById('ai-analyze-btn');
   errEl.classList.add('hidden');
-  var drugName, mfr, imageUrl, pageUrl;
-  if (_aiCurrentTab === 'name') {
-    drugName = document.getElementById('ai-drug-name').value.trim();
-    mfr      = document.getElementById('ai-mfr').value;
-    imageUrl = document.getElementById('ai-image-url').value.trim();
-    if (!drugName) { errEl.textContent = '약품명을 입력해주세요.'; errEl.classList.remove('hidden'); return; }
-    if (!mfr)      { errEl.textContent = '제약사를 선택해주세요.'; errEl.classList.remove('hidden'); return; }
-  } else {
-    pageUrl = document.getElementById('ai-page-url').value.trim();
-    if (!pageUrl) { errEl.textContent = 'URL을 입력해주세요.'; errEl.classList.remove('hidden'); return; }
+
+  const drugName = (document.getElementById('ai-drug-name')?.value || '').trim();
+  let   imageUrl = (document.getElementById('ai-image-url')?.value || '').trim();
+
+  if (!drugName) {
+    errEl.textContent = '약품명을 입력해주세요.';
+    errEl.classList.remove('hidden'); return;
   }
-  analyzeBtn.disabled = true; analyzeBtn.textContent = '🔍 분석 중...';
+
+  const origText = analyzeBtn.textContent;
+  analyzeBtn.disabled = true;
+  analyzeBtn.textContent = '🤖 분석 중...';
+
   try {
-    var result;
-    if (_aiCurrentTab === 'name') {
-      const resp = await fetch(WORKER_URL, {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'analyzeDrugBoard', drugName: drugName, manufacturer: mfr })
-      });
-      result = await resp.json();
-    } else {
-      const resp = await fetch(WORKER_URL, {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'scrapePharmaSite', url: pageUrl })
-      });
-      result = await resp.json();
-      if (result.drug_name)    drugName = result.drug_name;
-      if (result.manufacturer) mfr      = result.manufacturer;
-      if (result.image_url)    imageUrl  = result.image_url;
-    }
-    if (!result || result.error) throw new Error(result ? result.error : '분석 실패');
+    // 키오스크와 동일한 analyzeProduct 파이프라인
+    // (Worker 내부에서 식약처 DB + 네이버 블로그 + AI 자동 처리)
+    analyzeBtn.textContent = '🔍 식약처 + AI 검색 중...';
+    const r = await callAnalyzeProduct(drugName, imageUrl);
+
+    // Step 2 화면 전환
     document.getElementById('ai-step-1').classList.add('hidden');
     document.getElementById('ai-step-2').classList.remove('hidden');
-    document.getElementById('ai-result-name').value     = drugName || result.drug_name || '';
-    document.getElementById('ai-result-emoji').value    = result.emoji || '💊';
-    document.getElementById('ai-result-tags').value     = (result.func_tags || []).join(', ');
-    document.getElementById('ai-result-efficacy').value = result.efficacy || '';
-    document.getElementById('ai-result-dosage').value   = result.dosage || '';
-    document.getElementById('ai-result-note').value     = result.pharmacist_note || '';
-    const mfrSel = document.getElementById('ai-result-mfr');
-    if (mfr) { for (var o of mfrSel.options) { if (o.value === mfr) { mfrSel.value = mfr; break; } } }
+
+    document.getElementById('ai-result-name').value     = drugName;
+    document.getElementById('ai-result-emoji').value    = r.emoji;
+    document.getElementById('ai-result-efficacy').value = r.tagline;
+    document.getElementById('ai-result-dosage').value   = r.dosage;
+    document.getElementById('ai-result-note').value     = r.note;
+    document.getElementById('ai-result-tags').value     = r.badges.join(', ');
+
+    // 카테고리 자동 선택
     const catSel = document.getElementById('ai-result-cat');
-    if (result.category) { for (var o of catSel.options) { if (o.value === result.category) { catSel.value = result.category; break; } } }
-    const badge = document.getElementById('ai-source-badge');
-    const src   = result._source || '';
-    if (src.includes('식약처') || src.includes('mfds')) {
-      badge.textContent = '식약처'; badge.className = 'text-xs font-bold px-2 py-0.5 rounded-full bg-blue-100 text-blue-700';
-    } else if (src.includes('scrap') || src.includes('네이버')) {
-      badge.textContent = '스크래핑'; badge.className = 'text-xs font-bold px-2 py-0.5 rounded-full bg-purple-100 text-purple-700';
-    } else {
-      badge.textContent = 'AI 생성'; badge.className = 'text-xs font-bold px-2 py-0.5 rounded-full bg-amber-100 text-amber-700';
+    if (catSel && r.category) {
+      for (const o of catSel.options) {
+        if (o.value === r.category) { catSel.value = r.category; break; }
+      }
     }
-    const finalImg = imageUrl || result.image_url || '';
+
+    // 제약사: 선택된 값 유지
+    const mfrSel = document.getElementById('ai-mfr');
+    if (mfrSel?.value) {
+      const ms2 = document.getElementById('ai-result-mfr');
+      if (ms2) ms2.value = mfrSel.value;
+    }
+
+    // 이미지
+    const finalImg = r.imageUrl || imageUrl;
     document.getElementById('ai-image-url').value = finalImg;
     if (finalImg) {
-      document.getElementById('ai-step2-img').src              = finalImg;
-      document.getElementById('ai-step2-img-url').textContent  = finalImg;
+      document.getElementById('ai-step2-img').src = finalImg;
+      document.getElementById('ai-step2-img-url').textContent = finalImg;
       document.getElementById('ai-step2-img-wrap').classList.remove('hidden');
     } else {
       document.getElementById('ai-step2-img-wrap').classList.add('hidden');
     }
+
+    // 출처 배지
+    const badge = document.getElementById('ai-source-badge');
+    const src = r.source || '';
+    if (src.includes('식약처') || src.includes('mfds')) {
+      badge.textContent = '식약처+AI';
+      badge.className = 'text-xs font-bold px-2 py-0.5 rounded-full bg-blue-100 text-blue-700';
+    } else if (src.includes('네이버') || src.includes('naver')) {
+      badge.textContent = '네이버+AI';
+      badge.className = 'text-xs font-bold px-2 py-0.5 rounded-full bg-green-100 text-green-700';
+    } else {
+      badge.textContent = 'AI 생성';
+      badge.className = 'text-xs font-bold px-2 py-0.5 rounded-full bg-amber-100 text-amber-700';
+    }
+
   } catch(e) {
-    errEl.textContent = '분석 실패: ' + e.message;
+    errEl.textContent = '분석 실패: ' + (e.message || '네트워크 오류');
     errEl.classList.remove('hidden');
   }
-  analyzeBtn.disabled = false; analyzeBtn.textContent = '🔍 AI로 정보 채우기';
+
+  analyzeBtn.disabled = false;
+  analyzeBtn.textContent = origText;
+}
+
+
+async function runBatchRegister() {
+  const textarea  = document.getElementById('batch-drug-list');
+  const defaultMfr = document.getElementById('batch-default-mfr')?.value || '기타';
+  const logEl     = document.getElementById('batch-log');
+  const progWrap  = document.getElementById('batch-progress-wrap');
+  const progBar   = document.getElementById('batch-progress-bar');
+  const progLabel = document.getElementById('batch-progress-label');
+  const progPct   = document.getElementById('batch-progress-pct');
+  const analyzeBtn = document.getElementById('ai-analyze-btn');
+
+  const lines = (textarea?.value || '').split('\n')
+    .map(l => l.trim()).filter(Boolean);
+  if (!lines.length) {
+    showToast('약품명 목록을 입력해주세요.'); return;
+  }
+  if (!currentUser) {
+    showToast('일괄 등록은 로그인이 필요합니다.'); return;
+  }
+
+  analyzeBtn.disabled = true;
+  logEl.classList.remove('hidden');
+  progWrap.classList.remove('hidden');
+  logEl.innerHTML = '';
+
+  const addLog = (msg, color) => {
+    logEl.innerHTML += `<div style="color:${color||'#94a3b8'}">${msg}</div>`;
+    logEl.scrollTop = logEl.scrollHeight;
+  };
+
+  let done = 0, failed = 0;
+  for (let i = 0; i < lines.length; i++) {
+    const parts    = lines[i].split('|');
+    const drugName = parts[0].trim();
+    const mfr      = (parts[1] || defaultMfr).trim();
+
+    const pct = Math.round((i / lines.length) * 100);
+    progBar.style.width   = pct + '%';
+    progLabel.textContent = `(${i+1}/${lines.length}) ${drugName}`;
+    progPct.textContent   = pct + '%';
+    addLog(`🔍 [${i+1}/${lines.length}] ${drugName} 분석 중...`);
+
+    try {
+      // 키오스크와 동일한 analyzeProduct (식약처+네이버+AI)
+      const r = await callAnalyzeProduct(drugName, '');
+
+      // Supabase 저장
+      const { data: drugData, error: drugErr } = await sb.from('drugs').insert({
+        canonical_name: drugName,
+        emoji: r.emoji,
+        manufacturer_name: mfr,
+        category: r.category || '기타',
+        func_tags: r.badges || [],
+      }).select().single();
+      if (drugErr) throw new Error('약품 저장: ' + drugErr.message);
+
+      const { error: verErr } = await sb.from('drug_versions').insert({
+        drug_id: drugData.id,
+        user_id: currentUser.id,
+        pharmacy_name: currentProfile?.pharmacy_name || '관리자',
+        efficacy: r.tagline || '효능 정보 없음',
+        dosage:   r.dosage  || '용법에 따라 복용',
+        pharmacist_note: r.note || null,
+        image_url: r.imageUrl || null,
+      });
+      if (verErr) throw new Error('버전 저장: ' + verErr.message);
+
+      done++;
+      addLog(`✅ ${drugName} 등록 완료`, '#4ade80');
+    } catch(e) {
+      failed++;
+      addLog(`❌ ${drugName} 실패: ${e.message}`, '#f87171');
+    }
+
+    // 다음 요청까지 딜레이 (API 부하 방지)
+    if (i < lines.length - 1) await new Promise(r => setTimeout(r, 1200));
+  }
+
+  progBar.style.width   = '100%';
+  progLabel.textContent = '완료';
+  progPct.textContent   = '100%';
+  addLog(`\n🎉 완료: ${done}개 성공, ${failed}개 실패`, '#34d399');
+  analyzeBtn.disabled = false;
+  await loadDrugs();
 }
 
 async function submitAIRegister(continueMode) {
@@ -1318,289 +2193,244 @@ async function submitAIRegister(continueMode) {
     errEl.classList.remove('hidden'); btn.disabled = false; btn.textContent = '등록하기'; return;
   }
   const { error: verErr } = await sb.from('drug_versions').insert({
-    drug_id: drugData.id, user_id: currentUser.id,
+    drug_id: drugData.id, user_id: currentUser?.id || null,
     pharmacy_name: (currentProfile && currentProfile.pharmacy_name) || '관리자',
     image_url: imageUrl || null, efficacy: efficacy, dosage: dosage, pharmacist_note: note || null,
   });
   btn.disabled = false; btn.textContent = '등록하기';
-  if (verErr) { errEl.textContent = '버전 등록 오류: ' + verErr.message; errEl.classList.remove('hidden'); return; }
-  showToast('"' + name + '" 등록 완료!');
-  await loadDrugs();
+  if (verErr) {
+    errEl.textContent = '버전 등록 오류: ' + verErr.message;
+    errEl.classList.remove('hidden'); return;
+  }
   if (continueMode) {
-    document.getElementById('ai-step-1').classList.remove('hidden');
+    // 등록 후 계속: Step1 초기화
     document.getElementById('ai-step-2').classList.add('hidden');
+    document.getElementById('ai-step-1').classList.remove('hidden');
     document.getElementById('ai-drug-name').value = '';
     document.getElementById('ai-image-url').value = '';
-    document.getElementById('ai-img-preview').style.display = 'none';
     document.getElementById('ai-step1-error').classList.add('hidden');
-    switchAITab('name');
-  } else { closeAIRegisterModal(); }
-}
-
-/* ══════════════════════════════════════
-   일괄 등록
-══════════════════════════════════════ */
-async function runBatchRegister() {
-  const raw = document.getElementById('batch-drug-list').value.trim();
-  const defaultMfr = document.getElementById('batch-default-mfr').value;
-  const lines = raw.split('\n').map(function(l){ return l.trim(); }).filter(Boolean);
-  if (lines.length === 0) { showToast('약품명을 입력해주세요.'); return; }
-  const logEl        = document.getElementById('batch-log');
-  const progressWrap = document.getElementById('batch-progress-wrap');
-  const progressBar  = document.getElementById('batch-progress-bar');
-  const progressLabel= document.getElementById('batch-progress-label');
-  const progressPct  = document.getElementById('batch-progress-pct');
-  const analyzeBtn   = document.getElementById('ai-analyze-btn');
-  logEl.classList.remove('hidden');
-  progressWrap.classList.remove('hidden');
-  logEl.innerHTML = '';
-  analyzeBtn.disabled = true;
-  var success = 0, fail = 0;
-  function log(msg, color) {
-    const span = document.createElement('div');
-    span.style.color = color || '#94a3b8';
-    span.textContent = msg;
-    logEl.appendChild(span);
-    logEl.scrollTop = logEl.scrollHeight;
-  }
-  for (var i = 0; i < lines.length; i++) {
-    const parts    = lines[i].split('|');
-    const drugName = parts[0].trim();
-    const mfr      = (parts[1] || defaultMfr).trim();
-    const pct      = Math.round((i / lines.length) * 100);
-    progressBar.style.width   = pct + '%';
-    progressLabel.textContent = '(' + (i+1) + '/' + lines.length + ') ' + drugName;
-    progressPct.textContent   = pct + '%';
-    log('⏳ [' + (i+1) + '/' + lines.length + '] ' + drugName + ' 분석 중...');
-    try {
-      const resp = await fetch(WORKER_URL, {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'analyzeDrugBoard', drugName: drugName, manufacturer: mfr })
-      });
-      const result = await resp.json();
-      if (result.error) throw new Error(result.error);
-      const { data: drugData, error: drugErr } = await sb.from('drugs').insert({
-        canonical_name: drugName, emoji: result.emoji || '💊',
-        manufacturer_name: mfr, category: result.category || '기타', func_tags: result.func_tags || [],
-      }).select().single();
-      if (drugErr) throw new Error(drugErr.message);
-      await sb.from('drug_versions').insert({
-        drug_id: drugData.id, user_id: currentUser.id,
-        pharmacy_name: (currentProfile && currentProfile.pharmacy_name) || '관리자',
-        efficacy: result.efficacy || '', dosage: result.dosage || '',
-        pharmacist_note: result.pharmacist_note || null,
-      });
-      log('✅ ' + drugName + ' 등록 완료', '#4ade80');
-      success++;
-    } catch(e) {
-      log('❌ ' + drugName + ' 실패: ' + e.message, '#f87171');
-      fail++;
-    }
-    if (i < lines.length - 1) { await new Promise(function(r){ setTimeout(r, 800); }); }
-  }
-  progressBar.style.width   = '100%';
-  progressPct.textContent   = '100%';
-  progressLabel.textContent = '완료! 성공 ' + success + '개, 실패 ' + fail + '개';
-  log('🎉 완료! 성공 ' + success + '개, 실패 ' + fail + '개', '#ffffff');
-  analyzeBtn.disabled = false;
-  await loadDrugs();
-}
-
-/* ══════════════════════════════════════
-   관리자 비밀번호 게이트 (Supabase 저장 — 기기 무관)
-══════════════════════════════════════ */
-async function getAdminPw() {
-  try {
-    const { data } = await sb.from('board_settings').select('value').eq('key', 'admin_password').single();
-    if (data && data.value) return data.value;
-  } catch(e) {}
-  return 'admin1234'; // 테이블 없을 때 폴백
-}
-
-function showAdminPwGate() {
-  document.getElementById('admin-pw-gate').classList.remove('hidden');
-}
-
-async function submitAdminPwGate() {
-  const input  = document.getElementById('gate-pw-input').value;
-  const errEl  = document.getElementById('gate-pw-error');
-  const btn    = document.getElementById('gate-pw-btn');
-  errEl.classList.add('hidden');
-  btn.disabled = true; btn.textContent = '확인 중...';
-  const saved = await getAdminPw();
-  btn.disabled = false; btn.textContent = '입장';
-  if (input === saved) {
-    localStorage.setItem('boardAdminVerified', 'true');
-    isAdminMode = true;
-    document.getElementById('admin-pw-gate').classList.add('hidden');
-    updateHeaderAuth();
-    showToast('관리자 모드로 입장했습니다.');
-    // 북마클릿으로 열린 경우 → 비밀번호 확인 즉시 모달 오픈
-    const _su = window._pendingScrapeUrl;
-    if (_su) {
-      if (currentUser) {
-        setTimeout(function() {
-          openAIRegisterModal();
-          switchAITab('url');
-          const urlEl = document.getElementById('ai-page-url');
-          if (urlEl) urlEl.value = decodeURIComponent(_su);
-          showToast('URL이 자동으로 입력되었습니다. AI 분석을 시작하세요!');
-        }, 300);
-      } else {
-        openAuth();
-        showToast('로그인 후 AI 스크래핑이 시작됩니다.');
-      }
-    }
+    showToast('✅ 등록 완료! 다음 약품을 입력하세요.');
   } else {
-    errEl.classList.remove('hidden');
-    errEl.textContent = '비밀번호가 올바르지 않습니다.';
-    document.getElementById('gate-pw-input').value = '';
+    closeAIRegisterModal();
+    showToast('✅ AI 약품 등록 완료!');
   }
+  await loadDrugs();
+  if (!continueMode && drugData) openDrugDetail(drugData);
 }
 
 /* ══════════════════════════════════════
    설정 뷰
 ══════════════════════════════════════ */
-async function openSettingsView() {
-  showView('settings');
-  await loadSettingsDrugList();
-}
+function getBoardMfdsKey() { return (localStorage.getItem('_mfdsApiKey') || '').trim(); }
 
-async function loadSettingsDrugList() {
-  const el = document.getElementById('settings-drug-list');
-  el.innerHTML = '<div class="text-slate-400 text-sm py-4 text-center animate-pulse">불러오는 중...</div>';
-  const { data, error } = await sb.from('drugs').select('*').order('created_at', { ascending: false });
-  if (error || !data) { el.innerHTML = '<div class="text-red-400 text-sm">로드 실패</div>'; return; }
-  if (data.length === 0) { el.innerHTML = '<div class="text-slate-400 text-sm py-4 text-center">등록된 약품이 없습니다.</div>'; return; }
-  el.innerHTML = '';
-  data.forEach(function(drug) {
-    const row = document.createElement('div');
-    row.className = 'flex items-center gap-3 py-2.5 border-b border-slate-50 last:border-0';
-    row.id = 'settings-drug-row-' + drug.id;
-    row.innerHTML =
-      '<span class="text-xl shrink-0">' + (drug.emoji || '💊') + '</span>' +
-      '<div class="flex-1 min-w-0">' +
-        '<div class="text-sm font-semibold text-slate-800 truncate">' + drug.canonical_name + '</div>' +
-        '<div class="text-xs text-slate-400">' + drug.manufacturer_name + ' · ' + (drug.version_count || 0) + '개 버전</div>' +
-      '</div>' +
-      '<button onclick="aiGenerateVersion(\'' + drug.id + '\',\'' + drug.canonical_name.replace(/'/g,'\\\'') + '\',\'' + drug.manufacturer_name + '\')"' +
-        ' class="text-xs font-bold px-3 py-1.5 rounded-lg border border-teal-300 text-teal-600 hover:bg-teal-50 transition-all shrink-0" id="ai-ver-btn-' + drug.id + '">' +
-        '🤖 AI 버전 생성' +
-      '</button>';
-    el.appendChild(row);
-  });
-}
-
-async function aiGenerateVersion(drugId, drugName, mfr) {
-  if (!currentUser) { showToast('로그인이 필요합니다.'); return; }
-  const btn = document.getElementById('ai-ver-btn-' + drugId);
-  btn.disabled = true; btn.textContent = '생성 중...';
+async function saveMfdsKey() {
+  const key = (document.getElementById('mfds-api-key')?.value || '').trim();
+  if (!key) { showToast('API 키를 입력해주세요'); return; }
+  // 1) localStorage 즉시 저장 (오프라인에서도 작동)
+  localStorage.setItem('_mfdsApiKey', key);
+  // 2) Supabase board_settings 에 동기화 (크로스 디바이스)
   try {
-    const resp = await fetch(WORKER_URL, {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ action: 'analyzeDrugBoard', drugName: drugName, manufacturer: mfr })
-    });
-    const result = await resp.json();
-    if (result.error) throw new Error(result.error);
-    const { error } = await sb.from('drug_versions').insert({
-      drug_id: drugId, user_id: currentUser.id,
-      pharmacy_name: (currentProfile && currentProfile.pharmacy_name) || '관리자',
-      image_url: result.image_url || null,
-      efficacy: result.efficacy || '', dosage: result.dosage || '',
-      pharmacist_note: result.pharmacist_note || null,
-    });
-    if (error) throw new Error(error.message);
-    btn.textContent = '✅ 완료';
-    btn.classList.add('bg-teal-50');
-    btn.disabled = false;
-    showToast('"' + drugName + '" AI 버전 생성 완료!');
-    loadDrugs();
+    await sb.from('board_settings').upsert(
+      { key: 'mfds_api_key', value: key, updated_at: new Date().toISOString() },
+      { onConflict: 'key' }
+    );
+    showToast('✅ API 키 저장됨! (모든 기기에 적용)');
   } catch(e) {
-    btn.disabled = false; btn.textContent = '❌ 재시도';
-    showToast('실패: ' + e.message);
+    showToast('✅ API 키 저장됨 (로컬만 — Supabase 동기화 실패)');
   }
+  updateHeaderAuth();
+  // 안내 배너 숨김
+  const nb = document.getElementById('admin-notice-bar');
+  if (nb) nb.classList.add('hidden');
 }
 
-async function aiGenerateAllVersions() {
-  if (!currentUser) { showToast('로그인이 필요합니다.'); return; }
-  const btn = document.getElementById('ai-all-ver-btn');
-  btn.disabled = true; btn.textContent = '⏳ 전체 생성 중...';
-  const { data } = await sb.from('drugs').select('id,canonical_name,manufacturer_name,version_count').order('created_at', { ascending: false });
-  if (!data || data.length === 0) { btn.disabled = false; btn.textContent = '🤖 버전 없는 약품 전체 AI 생성'; return; }
-  const targets = data.filter(function(d){ return (d.version_count || 0) === 0; });
-  if (targets.length === 0) { showToast('버전 없는 약품이 없습니다.'); btn.disabled = false; btn.textContent = '🤖 버전 없는 약품 전체 AI 생성'; return; }
-  for (var i = 0; i < targets.length; i++) {
-    const d = targets[i];
-    const rowBtn = document.getElementById('ai-ver-btn-' + d.id);
-    if (rowBtn) { rowBtn.disabled = true; rowBtn.textContent = '처리 중...'; }
-    try {
-      const resp = await fetch(WORKER_URL, {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'analyzeDrugBoard', drugName: d.canonical_name, manufacturer: d.manufacturer_name })
-      });
-      const result = await resp.json();
-      if (!result.error) {
-        await sb.from('drug_versions').insert({
-          drug_id: d.id, user_id: currentUser.id,
-          pharmacy_name: (currentProfile && currentProfile.pharmacy_name) || '관리자',
-          image_url: result.image_url || null,
-          efficacy: result.efficacy || '', dosage: result.dosage || '',
-          pharmacist_note: result.pharmacist_note || null,
-        });
-        if (rowBtn) { rowBtn.textContent = '✅ 완료'; rowBtn.disabled = false; }
-      }
-    } catch(e) {
-      if (rowBtn) { rowBtn.textContent = '❌ 실패'; rowBtn.disabled = false; }
+async function loadMfdsKeyInput() {
+  const el = document.getElementById('mfds-api-key');
+  // 1) 먼저 localStorage에서 빠르게 채우기
+  const local = getBoardMfdsKey();
+  if (el && local) el.value = local;
+  // 2) Supabase에서 최신값 확인 (크로스 디바이스 동기화)
+  try {
+    const { data } = await sb.from('board_settings').select('value').eq('key','mfds_api_key').single();
+    if (data?.value) {
+      localStorage.setItem('_mfdsApiKey', data.value);
+      if (el) el.value = data.value;
     }
-    if (i < targets.length - 1) await new Promise(function(r){ setTimeout(r, 900); });
-  }
-  btn.disabled = false; btn.textContent = '🤖 버전 없는 약품 전체 AI 생성';
-  showToast('전체 AI 버전 생성 완료!');
-  loadDrugs();
-  loadSettingsDrugList();
+  } catch(e) { /* ignore */ }
 }
 
-async function changeAdminPw() {
-  const cur   = document.getElementById('pw-change-cur').value;
-  const newPw = document.getElementById('pw-change-new').value;
-  const errEl = document.getElementById('pw-change-error');
-  const btn   = document.getElementById('pw-change-btn');
-  errEl.classList.add('hidden');
-  if (newPw.length < 4) { errEl.textContent = '새 비밀번호는 4자 이상이어야 합니다.'; errEl.classList.remove('hidden'); return; }
-  btn.disabled = true; btn.textContent = '저장 중...';
-  const saved = await getAdminPw();
-  if (cur !== saved) {
-    errEl.textContent = '현재 비밀번호가 틀렸습니다.';
-    errEl.classList.remove('hidden');
-    btn.disabled = false; btn.textContent = '변경하기'; return;
-  }
-  const { error } = await sb.from('board_settings').upsert({ key: 'admin_password', value: newPw, updated_at: new Date().toISOString() });
-  btn.disabled = false; btn.textContent = '변경하기';
-  if (error) { errEl.textContent = '저장 실패: ' + error.message; errEl.classList.remove('hidden'); return; }
-  document.getElementById('pw-change-cur').value = '';
-  document.getElementById('pw-change-new').value = '';
-  showToast('✅ 비밀번호가 변경되었습니다. 모든 기기에 즉시 적용됩니다.');
+// init: load mfds key from Supabase on app start
+async function initMfdsKey() {
+  try {
+    const { data } = await sb.from('board_settings').select('value').eq('key','mfds_api_key').single();
+    if (data?.value) {
+      localStorage.setItem('_mfdsApiKey', data.value);
+    }
+  } catch(e) {}
 }
+const proxyFetchBoard = (apiUrl, opts={}) =>
+  fetch(`${BOARD_PROXY}/?url=${encodeURIComponent(apiUrl)}`, opts);
+
+async function searchBoardDrugByName() {
+  const keyword = (document.getElementById('nd-search-input')?.value || '').trim();
+  if (!keyword) { showToast('검색할 약품명을 입력해주세요'); return; }
+  const KEY = getBoardMfdsKey();
+  if (!KEY) { showToast('⚙️ 설정 → 식약처 API 키를 먼저 등록해주세요'); return; }
+  const status = document.getElementById('nd-search-status');
+  const listEl = document.getElementById('nd-search-results');
+  status.textContent = `\uD83D\uDD0D "${keyword}" \uAC80\uC0C9 \uC911...`; status.style.color = '#64748b';
+  listEl.classList.add('hidden'); listEl.innerHTML = '';
+  const strip = s => (s||'').replace(/<[^>]+>/g,'').trim();
+  try {
+    const [easyRes, fullRes] = await Promise.allSettled([
+      proxyFetchBoard(
+        'https://apis.data.go.kr/1471000/DrbEasyDrugInfoService/getDrbEasyDrugList' +
+        '?serviceKey=' + encodeURIComponent(KEY) + '&itemName=' + encodeURIComponent(keyword) + '&type=json&numOfRows=10',
+        { signal: AbortSignal.timeout(9000) }
+      ).then(r => r.json()),
+      proxyFetchBoard(
+        'https://apis.data.go.kr/1471000/DrugPrdtPrmsnInfoService05/getDrugPrdtPrmsnDtlInq05' +
+        '?serviceKey=' + encodeURIComponent(KEY) + '&type=json&numOfRows=15&ITEM_NAME=' + encodeURIComponent(keyword),
+        { signal: AbortSignal.timeout(9000) }
+      ).then(r => r.json()),
+    ]);
+    const easyItems = easyRes.status==='fulfilled' ? (easyRes.value?.body?.items||[]) : [];
+    const fullItems = fullRes.status==='fulfilled' ? (fullRes.value?.body?.items||[]) : [];
+    const easyNames = new Set(easyItems.map(i => (i.itemName||'').trim()));
+    const uniqueFull = fullItems.filter(i => !easyNames.has((i.ITEM_NAME||'').trim()));
+    const total = easyItems.length + uniqueFull.length;
+    if (total === 0) {
+      status.textContent = '"' + keyword + '" \uAC80\uC0C9 \uACB0\uACFC \uC5C6\uC74C';
+      status.style.color = '#b45309'; return;
+    }
+    status.textContent = '"' + keyword + '" ' + total + '\uAC74 \u2014 \uC120\uD0DD\uD558\uBA74 \uC790\uB3D9 \uC785\uB825\uB429\uB2C8\uB2E4';
+    status.style.color = '#0f766e';
+    easyItems.forEach(function(item) {
+      var btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'w-full text-left px-3 py-2 rounded-lg border border-slate-200 bg-white hover:bg-teal-50 hover:border-teal-400 text-sm transition-colors';
+      btn.innerHTML = '<div class="font-semibold leading-tight">' + (item.itemName||'?') + '</div>' +
+        '<div class="text-xs text-slate-400">' + (item.entpName||'') + ' · ' + strip(item.efcyQesitm).slice(0,60) + '...</div>';
+      btn.onclick = (function(it) { return function() {
+        _fillBoardDrug(_parseBoardEDrug(it));
+        listEl.classList.add('hidden');
+        showToast('\u2705 ' + it.itemName + ' \uC790\uB3D9 \uC785\uB825\uB428');
+        _aiSummarizeBoardDrug({ name:it.itemName||'', efcy:strip(it.efcyQesitm).slice(0,300),
+          use:strip(it.useMethodQesitm).slice(0,300), warn:strip(it.atpnQesitm||it.atpnWarnQesitm).slice(0,200),
+          ingr:strip(it.nbIngredQesitm||'').slice(0,200) });
+      }; })(item);
+      listEl.appendChild(btn);
+    });
+    if (uniqueFull.length > 0) {
+      if (easyItems.length > 0) {
+        var d = document.createElement('div');
+        d.className = 'text-xs text-slate-400 px-2 py-1 font-semibold border-t border-slate-100 mt-1';
+        d.textContent = '── \uC2DD\uC57D\uCC98 \uC804\uCCB4 \uD5C8\uAC00DB ──'; listEl.appendChild(d);
+      }
+      uniqueFull.forEach(function(item) {
+        var btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = 'w-full text-left px-3 py-2 rounded-lg border border-slate-200 bg-white hover:bg-teal-50 hover:border-teal-400 text-sm transition-colors';
+        btn.innerHTML = '<div class="font-semibold leading-tight">' + (item.ITEM_NAME||'?') + '</div>' +
+          '<div class="text-xs text-slate-400">' + (item.ENTP_NAME||'') + ' · ' + strip(item.MAIN_INGR||'').slice(0,40) + '</div>';
+        btn.onclick = (function(it) { return function() {
+          _fillBoardDrug({ name:it.ITEM_NAME||'', mfr:it.ENTP_NAME||'', imageUrl:it.BIG_PRDT_IMG_URL||'' });
+          listEl.classList.add('hidden');
+          showToast('\u2705 ' + it.ITEM_NAME + ' \uC790\uB3D9 \uC785\uB825\uB428');
+          _aiSummarizeBoardDrug({ name:it.ITEM_NAME||'', efcy:strip(it.EE_DOC_DATA||'').slice(0,300),
+            use:strip(it.UD_DOC_DATA||'').slice(0,300), warn:strip(it.NB_DOC_DATA||'').slice(0,200),
+            ingr:strip(it.MAIN_INGR||'').slice(0,200) });
+        }; })(item);
+        listEl.appendChild(btn);
+      });
+    }
+    listEl.classList.remove('hidden');
+  } catch(e) {
+    status.textContent = '\u274C ' + e.message; status.style.color = '#dc2626';
+  }
+}
+
+function _parseBoardEDrug(item) {
+  var strip = function(s) { return (s||'').replace(/<[^>]+>/g,'').trim(); };
+  return { name:item.itemName||'', mfr:item.entpName||'', imageUrl:item.itemImage||'',
+    efficacy: strip(item.efcyQesitm).slice(0,200),
+    dosage:   strip(item.useMethodQesitm).slice(0,150),
+    note: strip(item.atpnQesitm||item.atpnWarnQesitm) ?
+          '\u26A0\uFE0F \uC8FC\uC758: ' + strip(item.atpnQesitm||item.atpnWarnQesitm).slice(0,120) : '' };
+}
+
+function _fillBoardDrug(d) {
+  var name=d.name||'', mfr=d.mfr||'', imageUrl=d.imageUrl||'', efficacy=d.efficacy||'', dosage=d.dosage||'', note=d.note||'';
+  if (name) { var el=document.getElementById('nd-name'); if (el) el.value=name; }
+  if (mfr) {
+    var sel=document.getElementById('nd-mfr');
+    if (sel) { var opt=Array.from(sel.options).find(function(o){return o.value&&mfr.includes(o.value);}); sel.value=opt?opt.value:'기타'; }
+  }
+  _boardDrugAI = { efficacy:efficacy, dosage:dosage, note:note, imageUrl:imageUrl };
+  var status=document.getElementById('nd-search-status');
+  if (status) { status.textContent='✅ 정보 입력됨 — 카테고리 선택 후 등록하세요'; status.style.color='#0f766e'; }
+}
+
+async function _aiSummarizeBoardDrug(p) {
+  var status=document.getElementById('nd-search-status');
+  try {
+    if (status) { status.textContent='🤖 AI가 복약지도 정리 중...'; status.style.color='#64748b'; }
+    var res = await fetch(BOARD_PROXY + '/?action=summarizeDrug', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify(p), signal: AbortSignal.timeout(15000),
+    });
+    var result = await res.json();
+    if (!res.ok || result.error) throw new Error(result.error||'AI 요약 실패');
+    if (result.info) _boardDrugAI.efficacy = result.info;
+    if (result.note) _boardDrugAI.note     = result.note;
+    if (result.emoji) { var emojiEl=document.getElementById('nd-emoji'); if (emojiEl&&!emojiEl.value) emojiEl.value=result.emoji; }
+    if (status) { status.textContent='✅ ' + (p.name||'') + ' — AI 복약지도 정리 완료 🤖'; status.style.color='#0f766e'; }
+  } catch(e) {
+    if (status) { status.textContent='✅ 정보 입력됨 (AI 요약 실패 — 버전 등록에서 직접 수정 가능)'; status.style.color='#b45309'; }
+  }
+}
+
+
+/* ══════════════════════════════════════
+   AI 약사 한마디 자동완성 (버전 등록 모달용)
+══════════════════════════════════════ */
+async function aiSummarizeNote() {
+  const btn     = document.getElementById('vm-ai-btn');
+  const noteEl  = document.getElementById('vm-note');
+  const effEl   = document.getElementById('vm-efficacy');
+  const dosEl   = document.getElementById('vm-dosage');
+  if (!btn) return;
+  const origText = btn.textContent;
+  btn.disabled = true;
+  btn.textContent = '🤖 AI 요약 중...';
+  try {
+    const payload = {
+      name:  currentDrug?.canonical_name || '',
+      efcy:  (effEl?.value || '').slice(0, 200),
+      use:   (dosEl?.value || '').slice(0, 200),
+      warn:  '',
+      ingr:  ''
+    };
+    const res = await fetch(BOARD_PROXY + '/?action=summarizeDrug', {
+      method:  'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body:    JSON.stringify(payload),
+      signal:  AbortSignal.timeout(15000)
+    });
+    const result = await res.json();
+    if (!res.ok || result.error) throw new Error(result.error || 'AI 요약 실패');
+    if (result.note && noteEl) noteEl.value = result.note;
+    showToast('✅ 약사 한마디 자동완성!');
+  } catch(e) {
+    showToast('AI 요약 실패: ' + (e.message || ''));
+  } finally {
+    btn.disabled = false;
+    btn.textContent = origText;
+  }
+}
+
 </script>
 
-<!-- ══════════════════════════════════════
-     MODAL: 관리자 비밀번호 게이트
-══════════════════════════════════════ -->
-<div id="admin-pw-gate" class="hidden fixed inset-0 z-[100] modal-bg flex items-center justify-center p-4">
-  <div class="bg-white rounded-2xl shadow-2xl w-full max-w-xs p-6 fade-in">
-    <div class="text-center mb-5">
-      <div class="text-4xl mb-2">🔐</div>
-      <h2 class="text-lg font-extrabold text-slate-800">관리자 모드</h2>
-      <p class="text-xs text-slate-400 mt-1">비밀번호를 입력해주세요</p>
-    </div>
-    <input id="gate-pw-input" type="password" placeholder="비밀번호"
-      class="w-full border border-slate-200 rounded-xl px-4 py-3 text-sm mb-2 focus:outline-none focus:border-teal-500"
-      onkeydown="if(event.key==='Enter') submitAdminPwGate()"/>
-    <div id="gate-pw-error" class="hidden text-xs text-red-500 mb-2 text-center"></div>
-    <button id="gate-pw-btn" onclick="submitAdminPwGate()" class="btn-primary w-full py-2.5 text-sm">입장</button>
-    <button onclick="history.back()" class="w-full mt-2 text-xs text-slate-400 hover:text-slate-600 py-1">취소</button>
-  </div>
-</div>
 
 <!-- ══════════════════════════════════════
      VIEW: 설정
@@ -1610,50 +2440,91 @@ async function changeAdminPw() {
     <button onclick="showView('list')" class="text-xs text-slate-400 hover:text-slate-600 mb-4 flex items-center gap-1">← 게시판으로</button>
     <h1 class="text-xl font-extrabold text-slate-800 mb-6">⚙️ 관리자 설정</h1>
 
-    <!-- 비밀번호 변경 -->
+    <!-- 식약처 API 키 -->
     <div class="bg-white rounded-2xl border border-slate-100 shadow-sm p-5 mb-4">
-      <h2 class="font-extrabold text-slate-700 mb-4 flex items-center gap-2">🔑 관리자 비밀번호 변경</h2>
+      <h2 class="font-extrabold text-slate-700 mb-1 flex items-center gap-2">🔍 식약처 공공데이터 API 키</h2>
+      <p class="text-xs text-slate-400 mb-3">약품 검색 자동입력 기능에 필요합니다.
+        <a href="https://www.data.go.kr/iim/api/selectAPIAcountView.do" target="_blank" class="text-teal-600 underline">공공데이터포털</a>에서 무료 발급.</p>
+      <div class="flex gap-2">
+        <input id="mfds-api-key" type="text" placeholder="발급받은 인증키 붙여넣기"
+          class="flex-1 border border-slate-200 rounded-xl px-3 py-2 text-xs focus:outline-none focus:border-teal-500"/>
+        <button onclick="saveMfdsKey()" class="btn-primary px-4 py-2 text-sm shrink-0">저장</button>
+      </div>
+      <p class="text-xs text-slate-400 mt-2">새 약품 등록 시 검색창에서 바로 사용됩니다.</p>
+    </div>
+
+    <!-- PIN 변경 -->
+    <div class="bg-white rounded-2xl border border-slate-100 shadow-sm p-5 mb-4">
+      <h2 class="font-extrabold text-slate-700 mb-4 flex items-center gap-2">🔑 관리자 PIN 변경</h2>
       <div class="space-y-2 mb-3">
-        <input id="pw-change-cur" type="password" placeholder="현재 비밀번호"
+        <input id="pw-change-cur" type="password" inputmode="numeric" maxlength="8" placeholder="현재 PIN"
           class="w-full border border-slate-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-teal-500"/>
-        <input id="pw-change-new" type="password" placeholder="새 비밀번호 (4자 이상)"
+        <input id="pw-change-new" type="password" inputmode="numeric" maxlength="8" placeholder="새 PIN"
+          class="w-full border border-slate-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-teal-500"/>
+        <input id="pw-change-confirm" type="password" inputmode="numeric" maxlength="8" placeholder="새 PIN 확인"
           class="w-full border border-slate-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-teal-500"/>
       </div>
       <div id="pw-change-error" class="hidden text-xs text-red-500 mb-2"></div>
-      <button id="pw-change-btn" onclick="changeAdminPw()" class="btn-primary px-5 py-2 text-sm">변경하기</button>
-      <p class="text-xs text-slate-400 mt-2">기본 비밀번호: admin1234 · Supabase에 저장 → 모든 기기 동일 적용</p>
+      <button onclick="changeAdminPin()"
+        class="btn-primary w-full py-2.5 text-sm">🔑 PIN 변경</button>
+    </div>
+
+    <!-- 키오스크 URL -->
+    <div class="bg-white rounded-2xl border border-slate-100 shadow-sm p-5 mb-4">
+      <h2 class="font-extrabold text-slate-700 mb-3 flex items-center gap-2">🔗 키오스크 URL 설정</h2>
+      <p class="text-xs text-slate-400 mb-3">"내 키오스크에 적용" 버튼이 이동할 주소입니다.</p>
+      <div class="space-y-2 mb-3">
+        <div>
+          <label class="text-xs font-bold text-slate-600 mb-1 block">🏪 1호점 URL</label>
+          <input id="kiosk-url-shop1" type="url" placeholder="https://... (1호점 GitHub Pages URL)"
+            class="w-full border border-slate-200 rounded-xl px-3 py-2 text-xs focus:outline-none focus:border-teal-500"/>
+        </div>
+        <div>
+          <label class="text-xs font-bold text-slate-600 mb-1 block">🏪 2호점 URL</label>
+          <input id="kiosk-url-shop2" type="url" placeholder="https://... (2호점 GitHub Pages URL)"
+            class="w-full border border-slate-200 rounded-xl px-3 py-2 text-xs focus:outline-none focus:border-purple-500"/>
+        </div>
+        <button onclick="saveKioskUrls()" class="btn-primary px-4 py-2 text-sm">💾 저장</button>
+      </div>
+    </div>
+
+    <!-- 북마클릿 -->
+    <div class="bg-white rounded-2xl border border-slate-100 shadow-sm p-5 mb-4">
+      <h2 class="font-extrabold text-slate-700 mb-1 flex items-center gap-2">🔖 AI 등록 북마클릿</h2>
+      <p class="text-xs text-slate-400 mb-4">약품 사이트에서 클릭 한 번으로 AI 등록 창을 바로 열 수 있어요.</p>
+      <div class="bg-slate-50 rounded-xl p-4 mb-3">
+        <ol class="text-xs text-slate-500 space-y-1 list-decimal list-inside">
+          <li>아래 버튼을 <strong>북마크 바로 드래그</strong></li>
+          <li>약품 상세 페이지 열기</li>
+          <li>북마클릿 클릭 → PIN 입력 → AI 분석 자동 시작</li>
+        </ol>
+      </div>
+      <a id="bookmarklet-link" href="#"
+        class="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-teal-600 text-white text-sm font-bold cursor-grab hover:bg-teal-700 transition-all select-none">
+        🔖 AI 약품 등록
+      </a>
     </div>
 
     <!-- AI 버전 자동 생성 -->
     <div class="bg-white rounded-2xl border border-slate-100 shadow-sm p-5 mb-4">
-      <div class="flex items-center justify-between mb-1">
-        <h2 class="font-extrabold text-slate-700 flex items-center gap-2">🤖 약품별 AI 버전 자동 생성</h2>
-        <button id="ai-all-ver-btn" onclick="aiGenerateAllVersions()"
-          class="text-xs font-bold px-3 py-2 rounded-xl bg-teal-600 text-white hover:bg-teal-700 transition-all shrink-0">
-          🤖 버전 없는 약품 전체 AI 생성
-        </button>
-      </div>
-      <p class="text-xs text-slate-400 mb-4">약품에 버전(설명)이 없으면 키오스크에서 다운로드할 수 없어요. AI가 자동으로 효능·용법·약사한마디를 채워드립니다.</p>
+      <h2 class="font-extrabold text-slate-700 mb-3 flex items-center gap-2">🤖 약품별 AI 버전 자동 생성</h2>
+      <p class="text-xs text-slate-400 mb-4">버전이 없는 약품에 AI가 효능·용법·약사한마디를 자동으로 채웁니다.</p>
       <div id="settings-drug-list" class="divide-y divide-slate-50">
         <div class="text-slate-400 text-sm py-4 text-center">설정 페이지를 열면 자동으로 로드됩니다.</div>
       </div>
     </div>
 
-    <!-- 게시판 URL 안내 -->
+    <!-- 게시판 URL -->
     <div class="bg-white rounded-2xl border border-slate-100 shadow-sm p-5">
-      <h2 class="font-extrabold text-slate-700 mb-3 flex items-center gap-2">🔗 게시판 URL 안내</h2>
+      <h2 class="font-extrabold text-slate-700 mb-3 flex items-center gap-2">🔗 게시판 URL</h2>
       <div class="space-y-2 text-sm">
         <div class="flex items-center gap-2 bg-slate-50 rounded-xl px-4 py-3">
           <span class="text-xs font-bold text-slate-500 shrink-0">일반</span>
           <code class="text-teal-700 text-xs flex-1 break-all">https://real0741-web.github.io/pharmacy-board/</code>
-          <button onclick="navigator.clipboard.writeText('https://real0741-web.github.io/pharmacy-board/').then(function(){showToast('복사됨!')})"
-            class="text-xs text-slate-400 hover:text-teal-600 shrink-0">복사</button>
         </div>
         <div class="flex items-center gap-2 bg-amber-50 rounded-xl px-4 py-3">
           <span class="text-xs font-bold text-amber-600 shrink-0">관리자</span>
           <code class="text-amber-700 text-xs flex-1 break-all">https://real0741-web.github.io/pharmacy-board/?mode=admin</code>
-          <button onclick="navigator.clipboard.writeText('https://real0741-web.github.io/pharmacy-board/?mode=admin').then(function(){showToast('복사됨!')})"
-            class="text-xs text-slate-400 hover:text-amber-600 shrink-0">복사</button>
         </div>
       </div>
     </div>
