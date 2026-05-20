@@ -94,12 +94,44 @@
 
   <!-- 관리자 알림 배너 (admin mode일 때만 표시) -->
   <div id="admin-notice-bar" class="hidden bg-amber-50 border-b border-amber-200">
-    <div class="max-w-5xl mx-auto px-4 py-2 flex items-center gap-3 text-xs">
+    <div class="max-w-5xl mx-auto px-4 py-2 flex items-center gap-3 text-xs flex-wrap">
       <span class="text-amber-600 font-bold">⚠️ 관리자 모드</span>
       <span id="admin-notice-msg" class="text-amber-700 flex-1"></span>
+      <button onclick="toggleBulkDeleteMode()"
+        id="bulk-delete-toggle-btn"
+        class="shrink-0 bg-red-100 text-red-600 font-bold px-3 py-1 rounded-lg hover:bg-red-200 transition-all border border-red-200">
+        🗂 일괄 삭제
+      </button>
       <button onclick="showView('settings')"
         class="shrink-0 bg-amber-500 text-white font-bold px-3 py-1 rounded-lg hover:bg-amber-600 transition-all">
         ⚙️ 설정 열기
+      </button>
+    </div>
+  </div>
+
+  <!-- 일괄 삭제 플로팅 바 -->
+  <div id="bulk-delete-bar" class="hidden fixed bottom-0 left-0 right-0 z-50 bg-red-600 text-white shadow-2xl">
+    <div class="max-w-5xl mx-auto px-4 py-3 flex items-center gap-3">
+      <button onclick="bulkSelectAll()"
+        class="text-xs font-bold bg-white/20 hover:bg-white/30 px-3 py-1.5 rounded-lg transition-all">
+        ☑️ 전체 선택
+      </button>
+      <button onclick="bulkSelectNone()"
+        class="text-xs font-bold bg-white/20 hover:bg-white/30 px-3 py-1.5 rounded-lg transition-all">
+        ⬜ 전체 해제
+      </button>
+      <span id="bulk-selected-count" class="text-sm font-bold flex-1 text-center">
+        0개 선택됨
+      </span>
+      <button onclick="executeBulkDelete()"
+        id="bulk-delete-exec-btn"
+        class="text-sm font-extrabold bg-white text-red-600 px-5 py-1.5 rounded-lg hover:bg-red-50 transition-all disabled:opacity-40"
+        disabled>
+        🗑 선택 삭제
+      </button>
+      <button onclick="toggleBulkDeleteMode()"
+        class="text-xs font-bold bg-white/20 hover:bg-white/30 px-3 py-1.5 rounded-lg transition-all">
+        ✕ 취소
       </button>
     </div>
   </div>
@@ -1191,14 +1223,25 @@ function renderDrugs() {
 
   list.forEach(d => {
     const card = document.createElement('div');
-    card.className = 'card fade-in overflow-hidden';
-    card.onclick = () => openDrugDetail(d);
+    card.className = 'card fade-in overflow-hidden relative';
+    card.dataset.drugId = d.id;
+
+    // 일괄 삭제 모드일 때는 체크박스 토글, 아니면 상세보기
+    card.onclick = () => {
+      if (_bulkDeleteMode) { toggleBulkSelect(card, d.id); }
+      else { openDrugDetail(d); }
+    };
 
     const tags = (d.func_tags || []).slice(0,3).map(t =>
       `<span class="text-xs bg-teal-50 text-teal-700 font-semibold px-2 py-0.5 rounded-full">${t}</span>`
     ).join('');
 
     card.innerHTML = `
+      <!-- 일괄 삭제 모드 체크박스 오버레이 -->
+      <div class="bulk-check-overlay hidden absolute top-2 right-2 z-10">
+        <div class="w-6 h-6 rounded-full border-2 border-slate-300 bg-white flex items-center justify-center text-sm transition-all" id="chk-${d.id}">
+        </div>
+      </div>
       <div class="p-3">
         <div class="flex items-start justify-between mb-2">
           <span class="text-3xl">${d.emoji || '💊'}</span>
@@ -1214,6 +1257,9 @@ function renderDrugs() {
       </div>`;
     grid.appendChild(card);
   });
+
+  // 일괄 삭제 모드면 오버레이 표시 유지
+  if (_bulkDeleteMode) _applyBulkModeUI(true);
 }
 
 /* ══════════════════════════════════════
@@ -1738,6 +1784,158 @@ async function deleteDrugById(drugId, drugName) {
     showToast('❌ ' + e.message);
     if (delBtn) { delBtn.disabled = false; delBtn.textContent = '🗑 삭제'; }
   }
+}
+
+/* ══════════════════════════════════════
+   일괄 삭제 모드 (관리자 전용)
+══════════════════════════════════════ */
+let _bulkDeleteMode = false;
+const _bulkSelected = new Set(); // 선택된 drugId 집합
+
+function toggleBulkDeleteMode() {
+  _bulkDeleteMode = !_bulkDeleteMode;
+  _bulkSelected.clear();
+
+  const bar = document.getElementById('bulk-delete-bar');
+  const toggleBtn = document.getElementById('bulk-delete-toggle-btn');
+
+  if (_bulkDeleteMode) {
+    bar.classList.remove('hidden');
+    toggleBtn.classList.add('bg-red-500', 'text-white');
+    toggleBtn.classList.remove('bg-red-100', 'text-red-600');
+    toggleBtn.textContent = '✕ 일괄 삭제 종료';
+    showToast('📋 카드를 탭해서 삭제할 약품을 선택하세요');
+  } else {
+    bar.classList.add('hidden');
+    toggleBtn.classList.remove('bg-red-500', 'text-white');
+    toggleBtn.classList.add('bg-red-100', 'text-red-600');
+    toggleBtn.textContent = '🗂 일괄 삭제';
+  }
+  _applyBulkModeUI(_bulkDeleteMode);
+  _updateBulkBar();
+}
+
+function _applyBulkModeUI(on) {
+  document.querySelectorAll('.bulk-check-overlay').forEach(el => {
+    el.classList.toggle('hidden', !on);
+  });
+  document.querySelectorAll('#drug-grid .card').forEach(card => {
+    if (on) {
+      card.style.cursor = 'pointer';
+      card.style.userSelect = 'none';
+    } else {
+      card.style.cursor = '';
+      // 체크 상태 초기화
+      const drugId = card.dataset.drugId;
+      _setCardChecked(card, false);
+    }
+  });
+}
+
+function toggleBulkSelect(card, drugId) {
+  if (_bulkSelected.has(drugId)) {
+    _bulkSelected.delete(drugId);
+    _setCardChecked(card, false);
+  } else {
+    _bulkSelected.add(drugId);
+    _setCardChecked(card, true);
+  }
+  _updateBulkBar();
+}
+
+function _setCardChecked(card, checked) {
+  const chk = card.querySelector('.bulk-check-overlay > div');
+  if (!chk) return;
+  if (checked) {
+    chk.textContent = '✓';
+    chk.className = 'w-6 h-6 rounded-full border-2 border-red-500 bg-red-500 flex items-center justify-center text-sm text-white font-bold transition-all';
+    card.style.outline = '2px solid #ef4444';
+    card.style.outlineOffset = '2px';
+  } else {
+    chk.textContent = '';
+    chk.className = 'w-6 h-6 rounded-full border-2 border-slate-300 bg-white flex items-center justify-center text-sm transition-all';
+    card.style.outline = '';
+  }
+}
+
+function bulkSelectAll() {
+  document.querySelectorAll('#drug-grid .card').forEach(card => {
+    const drugId = card.dataset.drugId;
+    if (drugId) {
+      _bulkSelected.add(drugId);
+      _setCardChecked(card, true);
+    }
+  });
+  _updateBulkBar();
+}
+
+function bulkSelectNone() {
+  _bulkSelected.clear();
+  document.querySelectorAll('#drug-grid .card').forEach(card => {
+    _setCardChecked(card, false);
+  });
+  _updateBulkBar();
+}
+
+function _updateBulkBar() {
+  const cnt = _bulkSelected.size;
+  const countEl = document.getElementById('bulk-selected-count');
+  const execBtn = document.getElementById('bulk-delete-exec-btn');
+  if (countEl) countEl.textContent = `${cnt}개 선택됨`;
+  if (execBtn) execBtn.disabled = (cnt === 0);
+}
+
+async function executeBulkDelete() {
+  const cnt = _bulkSelected.size;
+  if (cnt === 0) return;
+  if (!confirm(`선택한 약품 ${cnt}개를 모두 삭제하시겠습니까?\n\n버전 데이터도 함께 삭제됩니다.\n이 작업은 되돌릴 수 없습니다.`)) return;
+
+  const execBtn = document.getElementById('bulk-delete-exec-btn');
+  const countEl = document.getElementById('bulk-selected-count');
+  execBtn.disabled = true;
+  execBtn.textContent = '삭제 중...';
+
+  const ids = [..._bulkSelected];
+  let successCnt = 0;
+  let failCnt = 0;
+
+  for (const drugId of ids) {
+    try {
+      const res = await fetch(WORKER_URL + '/?action=boardDeleteDrug', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ drugId }),
+        signal: AbortSignal.timeout(15000),
+      });
+      const data = await res.json();
+      if (data.ok) {
+        successCnt++;
+        _bulkSelected.delete(drugId);
+        // 해당 카드 즉시 페이드아웃
+        const card = document.querySelector(`[data-drug-id="${drugId}"]`);
+        if (card) { card.style.opacity = '0.3'; card.style.pointerEvents = 'none'; }
+        countEl.textContent = `삭제 중... (${successCnt}/${ids.length})`;
+      } else {
+        failCnt++;
+      }
+    } catch(e) {
+      failCnt++;
+    }
+  }
+
+  // 완료
+  execBtn.textContent = '🗑 선택 삭제';
+  execBtn.disabled = false;
+
+  if (failCnt === 0) {
+    showToast(`✅ ${successCnt}개 약품 삭제 완료!`);
+  } else {
+    showToast(`⚠️ ${successCnt}개 삭제 완료, ${failCnt}개 실패`);
+  }
+
+  // 일괄 삭제 모드 종료 + 목록 새로고침
+  toggleBulkDeleteMode();
+  await loadDrugs();
 }
 
 async function copyVersionToNew(versionId) {
