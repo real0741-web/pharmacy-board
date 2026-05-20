@@ -1743,27 +1743,27 @@ async function regSubmit(continueMode) {
     const tagArr = tagsRaw ? tagsRaw.split(',').map(t => t.trim()).filter(Boolean) : [];
     const { data: drugRow, error: drugErr } = await withTimeout(
       sb.from('drugs').insert({
-        canonical_name:  name,
-        emoji:           emoji,
-        category:        cat,
-        manufacturer_id: mfrId,
-        tags:            tagArr,
-        created_by:      currentUser?.id || null,
-      }).select().single(), 5000, 'drugs INSERT');
+        canonical_name:    name,
+        emoji:             emoji,
+        category:          cat,
+        manufacturer_id:   mfrId,
+        manufacturer_name: (mfr && mfr !== '기타') ? mfr : '기타',
+        func_tags:         tagArr,
+      }).select().single(), 15000, 'drugs INSERT');
 
     if (drugErr) throw new Error('drugs 저장 실패: ' + (drugErr.message || drugErr.code || JSON.stringify(drugErr)));
 
     // 3) drug_versions 테이블에 INSERT
     const { error: verErr } = await withTimeout(
       sb.from('drug_versions').insert({
-        drug_id:    drugRow.id,
-        version:    1,
-        tagline:    efficacy,
-        info:       dosage,
-        note:       note,
-        image_url:  imgUrl || null,
-        created_by: currentUser?.id || null,
-      }), 5000, 'drug_versions INSERT');
+        drug_id:          drugRow.id,
+        user_id:          null,
+        pharmacy_name:    '관리자',
+        efficacy:         efficacy || '효능 정보 없음',
+        dosage:           dosage   || '제품 동봉 설명서 참조',
+        pharmacist_note:  note     || null,
+        image_url:        imgUrl   || null,
+      }), 15000, 'drug_versions INSERT');
 
     if (verErr) throw new Error('버전 저장 실패: ' + (verErr.message || verErr.code || JSON.stringify(verErr)));
 
