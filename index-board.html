@@ -650,8 +650,8 @@
     <!-- ① 한 줄 설명 (tagline) -->
     <div class="field">
       <label>📝 한 줄 설명 (태그라인) <span class="text-red-400">*</span>
-        <span class="text-slate-400 font-normal ml-1">(60자 이내)</span></label>
-      <textarea id="vm-efficacy" rows="2" placeholder="예: 두통·치통·생리통·근육통 완화, 해열"
+        <span class="text-slate-400 font-normal ml-1">(30자 이내)</span></label>
+      <textarea id="vm-efficacy" rows="1" placeholder="예: 두통·치통·생리통·근육통 완화, 해열"
         style="border:1.5px solid #e2e8f0;border-radius:10px;padding:9px 12px;font-size:14px;width:100%;resize:vertical;"></textarea>
     </div>
     <!-- ② 배지 (badges) -->
@@ -1351,7 +1351,7 @@ function renderVersions(versions) {
         <div class="space-y-2 text-sm text-slate-700">
           ${v.efficacy ? `<div><span class="font-bold text-teal-700 text-xs">📝 한 줄 설명(태그라인)</span><br/>${v.efficacy}</div>` : ''}
           ${v.pharmacist_note ? `<div class="bg-amber-50 rounded-lg p-2.5"><span class="font-bold text-amber-700 text-xs">📋 복약 지도</span><br/>${v.pharmacist_note}</div>` : ''}
-          ${v.dosage ? `<div><span class="font-bold text-blue-600 text-xs">🔬 제품 정보(성분·용량)</span><br/>${v.dosage}</div>` : ''}
+          <div><span class="font-bold text-blue-600 text-xs">🔬 제품 정보(성분·용량)</span><br/>${v.dosage || '<span class="text-slate-400 text-xs italic">등록된 성분·함량 정보가 없습니다.</span>'}</div>
         </div>
         <div class="flex flex-wrap gap-2 mt-3">
           <button onclick="downloadVersion('${v.id}')" class="btn-primary flex-1 py-2 text-sm">✅ 이 버전 키오스크에 가져오기</button>
@@ -1502,7 +1502,7 @@ function downloadDrugBase() {
       name:           currentDrug.canonical_name || '',
       emoji:          currentDrug.emoji          || '💊',
       cat:            currentDrug.category       || '기타',
-      tagline:        (currentDrug.func_tags || []).join(', ').slice(0, 60),
+      tagline:        (currentDrug.func_tags || []).join(', ').slice(0, 30),
       info:           '',
       pharmacistNote: '',
       imageUrl:       '',
@@ -1529,7 +1529,7 @@ async function downloadVersion(versionId) {
         name:           currentDrug?.canonical_name || '',
         emoji:          currentDrug?.emoji || '💊',
         cat:            currentDrug?.category || '기타',
-        tagline:        (v.efficacy || '').slice(0, 60),
+        tagline:        (v.efficacy || '').slice(0, 30),
         info:           v.dosage || '',
         pharmacistNote: v.pharmacist_note || '',
         badges:         v.badges || '',
