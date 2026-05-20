@@ -586,12 +586,21 @@
 ══════════════════════════════════════ -->
 <div id="version-modal" class="hidden fixed inset-0 z-50 modal-bg flex items-center justify-center p-4">
   <div class="bg-white rounded-2xl shadow-2xl w-full max-w-lg p-6 fade-in max-h-[92vh] overflow-y-auto">
-    <div class="flex items-center justify-between mb-4">
+    <div class="flex items-center justify-between mb-3">
       <div>
         <h2 class="text-lg font-extrabold" id="vm-title">버전 등록</h2>
         <div id="vm-drug-name" class="text-xs text-slate-400 mt-0.5"></div>
       </div>
       <button onclick="closeVersionModal()" class="w-8 h-8 rounded-full bg-slate-100 text-slate-500 text-sm">✕</button>
+    </div>
+
+    <!-- AI 자동 채우기 상태 바 -->
+    <div id="vm-ai-status-bar" class="hidden mb-3 bg-teal-50 border border-teal-200 rounded-xl px-4 py-2.5 flex items-center gap-3">
+      <div id="vm-ai-spinner" class="w-4 h-4 border-2 border-teal-500 border-t-transparent rounded-full animate-spin shrink-0"></div>
+      <span id="vm-ai-status-msg" class="text-xs text-teal-700 font-semibold flex-1">🤖 AI가 약품 정보를 분석하는 중...</span>
+      <button onclick="vmAutoFill(true)" id="vm-ai-refill-btn" class="hidden text-xs font-bold text-teal-600 bg-teal-100 hover:bg-teal-200 px-2.5 py-1 rounded-lg transition-all">
+        🔄 다시 채우기
+      </button>
     </div>
 
     <input type="hidden" id="vm-drug-id"/>
@@ -618,10 +627,11 @@
       <input id="vm-img-url-1" type="url" placeholder="또는 제약사 공식 제품 이미지 URL 붙여넣기"
         style="border:1.5px solid #e2e8f0;border-radius:10px;padding:8px 12px;font-size:13px;width:100%;margin-bottom:6px;"
         oninput="previewUrlImage(1)"/>
-      <!-- 이미지 자동검색 버튼 -->
+      <!-- 이미지 자동검색 버튼 (수동 재검색용) -->
       <button type="button" onclick="fetchDrugImagesForVersion()"
+        id="vm-img-search-btn"
         style="width:100%;padding:7px 12px;border-radius:10px;border:1.5px dashed #99f6e4;background:#f0fdf4;color:#0d9488;font-size:12px;font-weight:700;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:6px;">
-        🖼 사진 자동검색 (식약처·네이버)
+        🖼 사진 다시 검색 (식약처·네이버)
       </button>
       <!-- 이미지 피커 (검색 결과) -->
       <div id="vm-img-picker" style="display:none;margin-top:8px;padding:10px;background:#f8fafc;border-radius:12px;border:1px solid #e2e8f0;">
@@ -648,8 +658,8 @@
       <div class="flex items-center justify-between mb-1">
         <label class="mb-0">💬 약사 한마디 <span class="text-slate-400 font-normal">(선택 · 1~2문장 해요체)</span></label>
         <button id="vm-ai-btn" type="button" onclick="aiSummarizeNote()"
-          class="flex items-center gap-1 text-xs font-bold text-teal-600 bg-teal-50 hover:bg-teal-100 border border-teal-200 rounded-lg px-2.5 py-1 transition-all">
-          🤖 AI 자동완성
+          class="flex items-center gap-1 text-xs font-bold text-slate-500 bg-slate-100 hover:bg-slate-200 border border-slate-200 rounded-lg px-2.5 py-1 transition-all">
+          🔄 AI 다시 작성
         </button>
       </div>
       <textarea id="vm-note" rows="2" placeholder="예: 식후 복용 권장. 위가 약하신 분께 특히 추천해요."
@@ -1187,6 +1197,15 @@ async function loadVersions(drugId) {
       document.getElementById('ver-empty').classList.remove('hidden');
     } else {
       renderVersions(data);
+      // ── 헤더 이미지: 베스트 버전 이미지로 업데이트 ──
+      const bestImg = data[0]?.image_url;
+      const imgWrap  = document.getElementById('detail-img-wrap');
+      const emojiEl  = document.getElementById('detail-emoji-big');
+      if (bestImg && imgWrap) {
+        imgWrap.innerHTML = `<img src="${bestImg}"
+          class="w-full h-full object-contain"
+          onerror="this.parentElement.innerHTML='<span class=\\'text-4xl\\'>${currentDrug?.emoji || '💊'}</span>'"/>`;
+      }
     }
   } catch(e) {
     document.getElementById('ver-loading').classList.add('hidden');
@@ -1337,7 +1356,9 @@ function openDrugDetail(d, pushState = true) {
   // 헤더 채우기
   document.getElementById('detail-drug-name').textContent  = d.canonical_name;
   document.getElementById('detail-drug-mfr').textContent   = d.manufacturer_name + (d.category ? ' · ' + d.category : '');
-  document.getElementById('detail-emoji-big').textContent  = d.emoji || '💊';
+  // 헤더 이미지 초기화 (버전 로드 전까지 이모지 표시)
+  const _imgWrap = document.getElementById('detail-img-wrap');
+  if (_imgWrap) _imgWrap.innerHTML = `<span id="detail-emoji-big" class="text-4xl">${d.emoji || '💊'}</span>`;
   document.getElementById('detail-ver-count').textContent  = d.version_count || 0;
   document.getElementById('detail-dl-count').textContent   = (d.total_downloads || 0).toLocaleString();
 
@@ -1618,7 +1639,20 @@ function openVersionUpload(prefill) {
   document.getElementById('vm-img-url-1').value = prefill?.image_url || '';
   if (prefill?.image_url) previewUrlImage(1);
   document.getElementById('vm-error').classList.add('hidden');
+
+  // AI 상태바 초기화
+  const statusBar = document.getElementById('vm-ai-status-bar');
+  const refillBtn = document.getElementById('vm-ai-refill-btn');
+  if (statusBar) { statusBar.classList.add('hidden'); }
+  if (refillBtn) { refillBtn.classList.add('hidden'); }
+
   document.getElementById('version-modal').classList.remove('hidden');
+
+  // 새 버전 등록이고 prefill이 없으면 자동으로 AI 채우기 실행
+  const hasContent = prefill?.efficacy || prefill?.dosage || prefill?.image_url;
+  if (!hasContent) {
+    setTimeout(() => vmAutoFill(false), 300); // 모달 애니메이션 후 실행
+  }
 }
 
 function closeVersionModal() {
@@ -3261,11 +3295,15 @@ function renderCrawledDrugs(drugs) {
 
     const info = document.createElement('div');
     info.style.cssText = 'display:flex;align-items:start;gap:10px;flex:1;min-width:0;';
+    const notePreview = d.pharmacist_note
+      ? '<div style="font-size:10px;color:#0d9488;margin-top:2px;font-style:italic;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">💬 ' + d.pharmacist_note.slice(0, 50) + (d.pharmacist_note.length > 50 ? '...' : '') + '</div>'
+      : '';
     info.innerHTML = imgHtml +
       '<div style="flex:1;min-width:0;">' +
         '<div style="font-weight:700;font-size:13px;color:#1e293b;">' + (d.name || '이름없음') + '</div>' +
         '<div style="font-size:11px;color:#64748b;margin:1px 0;">' + (d.manufacturer || '') + (d.category ? ' · ' + d.category : '') + '</div>' +
-        '<div style="font-size:11px;color:#94a3b8;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">' + (d.efficacy || '').slice(0, 60) + (d.efficacy?.length > 60 ? '...' : '') + '</div>' +
+        '<div style="font-size:11px;color:#94a3b8;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + (d.efficacy || '').slice(0, 55) + (d.efficacy?.length > 55 ? '...' : '') + '</div>' +
+        notePreview +
       '</div>';
 
     card.appendChild(cb);
@@ -3329,10 +3367,10 @@ async function startBulkRegister() {
           },
           version: {
             pharmacy_name:   '크롤링',
-            efficacy:        drug.efficacy   || '',
-            dosage:          drug.dosage     || '',
-            pharmacist_note: null,
-            image_url:       drug.imageUrl   || null,
+            efficacy:        drug.efficacy        || '',
+            dosage:          drug.dosage          || '',
+            pharmacist_note: drug.pharmacist_note || null,
+            image_url:       drug.imageUrl        || null,
           },
         }),
         signal: AbortSignal.timeout(15000),
@@ -3484,6 +3522,139 @@ async function _aiSummarizeBoardDrug(p) {
 /* ══════════════════════════════════════
    AI 약사 한마디 자동완성 (버전 등록 모달용)
 ══════════════════════════════════════ */
+/* ══════════════════════════════════════
+   버전 모달 자동 채우기 (이미지 + AI 텍스트 동시 실행)
+══════════════════════════════════════ */
+async function vmAutoFill(force = false) {
+  const drugName = currentDrug?.canonical_name;
+  if (!drugName) return;
+
+  const statusBar = document.getElementById('vm-ai-status-bar');
+  const spinner   = document.getElementById('vm-ai-spinner');
+  const statusMsg = document.getElementById('vm-ai-status-msg');
+  const refillBtn = document.getElementById('vm-ai-refill-btn');
+  const submitBtn = document.getElementById('vm-submit-btn');
+
+  // 상태바 표시
+  if (statusBar) statusBar.classList.remove('hidden');
+  if (refillBtn) refillBtn.classList.add('hidden');
+  if (spinner)   spinner.style.display = 'block';
+  if (statusMsg) statusMsg.textContent = `🤖 "${drugName}" 분석 중... (이미지 + 약품 정보)`;
+  if (submitBtn) submitBtn.disabled = true;
+
+  try {
+    // 이미지 검색 + AI 텍스트 동시 실행
+    const [imgResult, aiResult] = await Promise.allSettled([
+      _vmFetchImages(drugName),
+      _vmFetchAIText(drugName, force),
+    ]);
+
+    // 이미지 결과 적용
+    if (imgResult.status === 'fulfilled' && imgResult.value) {
+      if (statusMsg) statusMsg.textContent = `✅ 완료! 이미지 ${imgResult.value}장 · 텍스트 자동 입력됨`;
+    } else {
+      if (statusMsg) statusMsg.textContent = `✅ 완료! (이미지 검색 결과 없음)`;
+    }
+
+    if (spinner)   spinner.style.display = 'none';
+    if (refillBtn) refillBtn.classList.remove('hidden');
+
+  } catch(e) {
+    if (statusMsg) statusMsg.textContent = '⚠️ 일부 항목 자동입력 실패. 직접 입력해주세요.';
+    if (spinner)   spinner.style.display = 'none';
+    if (refillBtn) refillBtn.classList.remove('hidden');
+  } finally {
+    if (submitBtn) submitBtn.disabled = false;
+  }
+}
+
+async function _vmFetchImages(drugName) {
+  try {
+    const res = await fetch(WORKER_URL + '/?action=boardFetchDrugImages', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: drugName }),
+      signal: AbortSignal.timeout(15000),
+    });
+    const data = await res.json();
+    const images = data.images || [];
+    if (images.length === 0) return 0;
+
+    // 이미지 피커 그리드 렌더링 (fetchDrugImagesForVersion과 동일 로직)
+    const grid    = document.getElementById('vm-img-picker-grid');
+    const picker  = document.getElementById('vm-img-picker');
+    const notice  = document.getElementById('vm-img-copyright-notice');
+    if (!grid || !picker) return images.length;
+    grid.innerHTML = '';
+    let hasNaverImg = false;
+
+    images.forEach(img => {
+      if (img._source && img._source.includes('이버이미지')) hasNaverImg = true;
+      const wrap = document.createElement('div');
+      wrap.style.cssText = 'position:relative;cursor:pointer;';
+      wrap.innerHTML = `<img src="${img.thumbnailUrl||img.url}" loading="lazy"
+        style="width:100%;aspect-ratio:1;object-fit:contain;border-radius:8px;border:2px solid transparent;background:#f8fafc;"
+        onerror="this.parentElement.style.display='none'"
+        onclick="vmPickImage('${img.url}',this.parentElement)"/>
+        ${img._source ? `<span style="position:absolute;bottom:2px;left:2px;font-size:8px;background:rgba(0,0,0,0.5);color:#fff;border-radius:4px;padding:1px 3px;">${img._source}</span>` : ''}`;
+      grid.appendChild(wrap);
+    });
+
+    if (notice) notice.style.display = hasNaverImg ? 'inline' : 'none';
+    picker.style.display = 'block';
+
+    // 첫 번째 이미지를 자동으로 URL 칸에 세팅
+    const firstImg = images[0];
+    if (firstImg) {
+      const urlInput = document.getElementById('vm-img-url-1');
+      if (urlInput && !urlInput.value) {
+        urlInput.value = firstImg.url;
+        previewUrlImage(1);
+      }
+    }
+    return images.length;
+  } catch(e) {
+    console.warn('[vmFetchImages]', e);
+    return 0;
+  }
+}
+
+function vmPickImage(url, wrap) {
+  // 이전 선택 해제
+  document.querySelectorAll('#vm-img-picker-grid img').forEach(img => {
+    img.style.border = '2px solid transparent';
+  });
+  // 선택 표시
+  const img = wrap?.querySelector('img');
+  if (img) img.style.border = '2px solid #0d9488';
+  // URL 적용
+  const urlInput = document.getElementById('vm-img-url-1');
+  if (urlInput) { urlInput.value = url; previewUrlImage(1); }
+}
+
+async function _vmFetchAIText(drugName, force) {
+  try {
+    const effEl  = document.getElementById('vm-efficacy');
+    const dosEl  = document.getElementById('vm-dosage');
+    const noteEl = document.getElementById('vm-note');
+
+    const res = await fetch(WORKER_URL + '/?action=summarizeDrugBoard', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: drugName, efficacy: '', dosage: '' }),
+      signal: AbortSignal.timeout(20000),
+    });
+    const result = await res.json();
+    if (!res.ok || result.error) throw new Error(result.error);
+
+    if (effEl  && result.efficacy        && (force || !effEl.value.trim()))  effEl.value  = result.efficacy;
+    if (dosEl  && result.dosage          && (force || !dosEl.value.trim()))  dosEl.value  = result.dosage;
+    if (noteEl && result.pharmacist_note && (force || !noteEl.value.trim())) noteEl.value = result.pharmacist_note;
+  } catch(e) {
+    console.warn('[vmFetchAIText]', e);
+  }
+}
+
 async function aiSummarizeNote() {
   const btn    = document.getElementById('vm-ai-btn');
   const noteEl = document.getElementById('vm-note');
