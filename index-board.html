@@ -362,12 +362,23 @@
             🔍 분석
           </button>
         </div>
-        <!-- 페이지 수 설정 -->
-        <div class="flex items-center gap-3 bg-slate-50 rounded-xl px-4 py-2.5">
+        <!-- 페이지 수 + SPA 모드 설정 -->
+        <div class="flex items-center gap-3 bg-slate-50 rounded-xl px-4 py-2.5 flex-wrap">
           <span class="text-xs font-bold text-slate-500 shrink-0">📄 최대 페이지 수</span>
           <input id="crawl-max-pages" type="number" min="1" max="10" value="1"
             class="w-16 border border-slate-200 rounded-lg px-2 py-1 text-sm text-center font-bold"/>
           <span class="text-xs text-slate-400">페이지 (1~10) · 많을수록 느림</span>
+          <label class="flex items-center gap-1.5 ml-auto cursor-pointer select-none"
+                 title="React/Vue 등 JS로 렌더링되는 사이트는 SPA 모드 사용">
+            <input type="checkbox" id="crawl-spa-mode" onchange="updateCrawlModeHint()"
+              class="w-4 h-4 accent-orange-500"/>
+            <span class="text-xs font-bold text-orange-600">🤖 SPA 모드</span>
+          </label>
+        </div>
+        <div id="crawl-spa-hint" class="hidden bg-orange-50 border border-orange-200 rounded-xl px-4 py-2.5 text-xs text-orange-700 leading-relaxed">
+          🤖 <strong>SPA 모드:</strong> 헤드리스 브라우저로 JS를 실행해 렌더링된 페이지를 수집합니다.
+          처리 시간이 더 길고(페이지당 20~30초), 최대 5페이지까지 가능합니다.
+          <strong>유한양행, LG생활건강</strong> 등 React/Vue 사이트에 사용하세요.
         </div>
         <!-- 예시 URL -->
         <div class="flex flex-wrap gap-1.5">
@@ -375,11 +386,11 @@
           <button onclick="setCrawlUrl('https://www.dong-a.com/kr/product/list')" class="text-xs text-purple-500 underline hover:text-purple-700">동아제약</button>
           <button onclick="setCrawlUrl('https://www.hanmi.co.kr/ko/product/list')" class="text-xs text-purple-500 underline hover:text-purple-700">한미약품</button>
           <button onclick="setCrawlUrl('https://www.ckdpharm.com/product')" class="text-xs text-purple-500 underline hover:text-purple-700">종근당</button>
-          <button onclick="setCrawlUrl('https://www.yuhan.co.kr/Product/MedicineList')" class="text-xs text-purple-500 underline hover:text-purple-700">유한양행</button>
+          <button onclick="setCrawlUrl('https://www.yuhan.co.kr/Product/MedicineList', true)" class="text-xs text-orange-500 underline hover:text-orange-700">유한양행(SPA)</button>
         </div>
         <div class="bg-purple-50 rounded-xl px-4 py-2.5 text-xs text-purple-700 leading-relaxed">
-          💡 <strong>잘 됨:</strong> 정적 HTML 목록/상세 페이지 &nbsp;
-          ⚠️ <strong>안 될 수 있음:</strong> React/Vue 등 JS 렌더링 사이트 → 스크린샷 탭 사용
+          💡 <strong>일반:</strong> 정적 HTML 사이트 (빠름) &nbsp;
+          🤖 <strong>SPA 모드:</strong> React/Vue JS 렌더링 사이트 (느리지만 정확)
         </div>
       </div>
 
@@ -578,11 +589,14 @@
       <!-- 이미지 자동검색 버튼 -->
       <button type="button" onclick="fetchDrugImagesForVersion()"
         style="width:100%;padding:7px 12px;border-radius:10px;border:1.5px dashed #99f6e4;background:#f0fdf4;color:#0d9488;font-size:12px;font-weight:700;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:6px;">
-        🖼 제약사·식약처 사진 자동검색
+        🖼 사진 자동검색 (식약처·네이버)
       </button>
       <!-- 이미지 피커 (검색 결과) -->
       <div id="vm-img-picker" style="display:none;margin-top:8px;padding:10px;background:#f8fafc;border-radius:12px;border:1px solid #e2e8f0;">
-        <div style="font-size:11px;font-weight:700;color:#64748b;margin-bottom:8px;">📷 검색된 이미지 — 클릭하면 적용됩니다</div>
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
+          <span style="font-size:11px;font-weight:700;color:#64748b;">📷 검색된 이미지 — 클릭하면 적용</span>
+          <span id="vm-img-copyright-notice" style="display:none;font-size:9px;color:#f59e0b;font-weight:600;">* 참고용 이미지 (저작권 주의)</span>
+        </div>
         <div id="vm-img-picker-grid" style="display:grid;grid-template-columns:repeat(4,1fr);gap:6px;"></div>
       </div>
     </div>
@@ -1339,37 +1353,51 @@ async function fetchDrugImagesForVersion() {
       return;
     }
 
+    // 출처별 배지 색상
+    const sourceBadge = {
+      '식약처(공식)': { bg: '#0d9488', label: '식약처' },
+      '식약처(허가)': { bg: '#0f766e', label: '허가DB' },
+      '네이버쇼핑':   { bg: '#03c75a', label: '쇼핑'  },
+      '네이버이미지*':{ bg: '#f59e0b', label: '이미지*'},
+    };
+
+    // 네이버 이미지* 출처 포함 여부 확인 → 저작권 공지 표시
+    const hasNaverImg = images.some(i => i.source === '네이버이미지*');
+    const notice = document.getElementById('vm-img-copyright-notice');
+    if (notice) notice.style.display = hasNaverImg ? 'inline' : 'none';
+
     images.forEach(function(img) {
+      const badge = sourceBadge[img.source] || { bg: '#64748b', label: img.source };
       const cell = document.createElement('div');
-      cell.style.cssText = 'position:relative;cursor:pointer;border-radius:8px;overflow:hidden;border:2px solid transparent;transition:border-color .15s;aspect-ratio:1;';
-      cell.title = img.source + ': ' + img.title;
+      cell.style.cssText = 'position:relative;cursor:pointer;border-radius:8px;overflow:hidden;border:2px solid transparent;transition:border-color .15s;aspect-ratio:1;background:#f8fafc;';
+      cell.title = '[' + img.source + '] ' + img.title;
       cell.innerHTML =
         '<img src="' + img.url + '" style="width:100%;height:100%;object-fit:contain;background:#fff;" ' +
         'onerror="this.parentElement.style.display=\'none\'"/>' +
-        '<div style="position:absolute;bottom:0;left:0;right:0;font-size:9px;background:rgba(0,0,0,.5);color:#fff;padding:2px 4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">' + img.source + '</div>';
+        '<div style="position:absolute;top:3px;left:3px;font-size:8px;font-weight:700;background:' + badge.bg + ';color:#fff;padding:1px 5px;border-radius:4px;opacity:.92;">' + badge.label + '</div>';
       cell.onmouseenter = function() { this.style.borderColor = '#2dd4bf'; };
-      cell.onmouseleave = function() { this.style.borderColor = 'transparent'; };
-      cell.onclick = (function(url) {
+      cell.onmouseleave = function() { if (this.dataset.selected !== '1') this.style.borderColor = 'transparent'; };
+      cell.onclick = (function(url, c) {
         return function() {
-          // 이미지 URL 1번 슬롯에 적용
           const urlInput = document.getElementById('vm-img-url-1');
           if (urlInput) { urlInput.value = url; previewUrlImage(1); }
-          // 선택 표시
-          grid.querySelectorAll('div').forEach(d => d.style.borderColor = 'transparent');
-          cell.style.borderColor = '#0d9488';
+          grid.querySelectorAll('div[data-selected]').forEach(d => { d.dataset.selected=''; d.style.borderColor='transparent'; });
+          c.dataset.selected = '1';
+          c.style.borderColor = '#0d9488';
           showToast('✅ 이미지 선택됨 — 저장하면 적용됩니다');
         };
-      })(img.url);
+      })(img.url, cell);
       grid.appendChild(cell);
     });
 
     picker.style.display = 'block';
-    showToast('🖼 ' + images.length + '장 이미지를 찾았어요 — 클릭해서 선택하세요');
+    const srcList = [...new Set(images.map(i => i.source))].join(' · ');
+    showToast('🖼 ' + images.length + '장 발견 (' + srcList + ')');
   } catch(e) {
     showToast('❌ 이미지 검색 실패: ' + e.message);
     console.error('[fetchDrugImagesForVersion]', e);
   } finally {
-    if (btn) { btn.disabled = false; btn.innerHTML = '🖼 제약사·식약처 사진 자동검색'; }
+    if (btn) { btn.disabled = false; btn.innerHTML = '🖼 사진 자동검색 (식약처·네이버)'; }
   }
 }
 
@@ -2819,9 +2847,25 @@ function closeCrawlModal() {
   _screenshotBase64 = null;
   _screenshotType   = 'image/jpeg';
 }
-function setCrawlUrl(url) {
+function setCrawlUrl(url, spaMode = false) {
   document.getElementById('crawl-url').value = url;
   document.getElementById('crawl-url').focus();
+  const spaCheckbox = document.getElementById('crawl-spa-mode');
+  if (spaCheckbox) { spaCheckbox.checked = spaMode; updateCrawlModeHint(); }
+}
+
+function updateCrawlModeHint() {
+  const isSpa = document.getElementById('crawl-spa-mode')?.checked;
+  const hint   = document.getElementById('crawl-spa-hint');
+  const maxEl  = document.getElementById('crawl-max-pages');
+  if (!hint || !maxEl) return;
+  hint.classList.toggle('hidden', !isSpa);
+  if (isSpa) {
+    maxEl.max = 5;
+    if (parseInt(maxEl.value) > 5) maxEl.value = 5;
+  } else {
+    maxEl.max = 10;
+  }
 }
 
 /* ── 스크린샷 처리 ── */
@@ -2918,6 +2962,7 @@ async function startCrawl() {
   if (!url) { showToast('URL을 입력해주세요'); return; }
   if (!url.startsWith('http')) { showToast('http:// 또는 https://로 시작하는 URL을 입력해주세요'); return; }
   const maxPages = parseInt(document.getElementById('crawl-max-pages')?.value || '1') || 1;
+  const isSpa = document.getElementById('crawl-spa-mode')?.checked || false;
 
   const startBtn  = document.getElementById('crawl-start-btn');
   const statusBox = document.getElementById('crawl-status-box');
@@ -2928,20 +2973,33 @@ async function startCrawl() {
   startBtn.disabled = true;
   startBtn.textContent = '⏳ 분석 중...';
   statusBox.classList.remove('hidden');
-  statusMsg.textContent = maxPages > 1
-    ? `🌐 ${maxPages}개 페이지 크롤링 중... (최대 ${maxPages * 20}초)`
-    : '🌐 페이지를 불러오는 중... (최대 20초)';
+
+  if (isSpa) {
+    statusMsg.textContent = maxPages > 1
+      ? `🤖 SPA 모드: ${maxPages}개 페이지 JS 렌더링 중... (최대 ${maxPages * 30}초)`
+      : '🤖 SPA 모드: 헤드리스 브라우저로 JS 렌더링 중... (최대 30초)';
+  } else {
+    statusMsg.textContent = maxPages > 1
+      ? `🌐 ${maxPages}개 페이지 크롤링 중... (최대 ${maxPages * 20}초)`
+      : '🌐 페이지를 불러오는 중... (최대 20초)';
+  }
   errEl.classList.add('hidden');
   resultsEl.classList.add('hidden');
   _crawledDrugs = [];
 
   try {
-    statusMsg.textContent = '🤖 AI가 약품 정보를 추출하는 중...';
-    const res = await fetch(WORKER_URL + '/?action=boardCrawlPage', {
+    statusMsg.textContent = isSpa
+      ? '🤖 헤드리스 브라우저 렌더링 후 AI 분석 중...'
+      : '🤖 AI가 약품 정보를 추출하는 중...';
+
+    const action = isSpa ? 'boardCrawlPageSPA' : 'boardCrawlPage';
+    const timeoutMs = isSpa ? maxPages * 35000 : maxPages * 25000;
+
+    const res = await fetch(WORKER_URL + '/?action=' + action, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ url, maxPages }),
-      signal: AbortSignal.timeout(maxPages * 25000),
+      signal: AbortSignal.timeout(timeoutMs),
     });
     const data = await res.json();
     if (data.error) throw new Error(data.error);
@@ -2957,9 +3015,13 @@ async function startCrawl() {
 
     // 결과 렌더링
     document.getElementById('crawl-page-title').textContent = data.pageTitle ? '📄 ' + data.pageTitle : '📄 ' + url;
+    const sourceLabel = data.source === 'spa' ? ' · 🤖 SPA 모드' : '';
+    const pagesLabel  = (data.pagesScanned || data.pagesFetched || 0) > 1
+      ? ' · ' + (data.pagesScanned || data.pagesFetched) + '페이지 분석' : '';
     document.getElementById('crawl-result-count').textContent =
       _crawledDrugs.length + '개 약품 발견'
-      + (data.pagesFetched > 1 ? ' · ' + data.pagesFetched + '페이지 분석' : '')
+      + pagesLabel
+      + sourceLabel
       + ' · 이미지 ' + (data.imageCount || 0) + '개'
       + ' · 텍스트 ' + ((data.textLength||0)/1000).toFixed(1) + 'KB';
 
