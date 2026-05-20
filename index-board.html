@@ -1255,6 +1255,10 @@ function renderDrugs() {
       `<span class="text-xs bg-teal-50 text-teal-700 font-semibold px-2 py-0.5 rounded-full">${t}</span>`
     ).join('');
 
+    const thumbHtml = d.best_image_url
+      ? `<img src="${d.best_image_url}" class="w-10 h-10 rounded-lg object-cover shrink-0" onerror="this.outerHTML='<span class=\\'text-3xl\\'>${d.emoji||'💊'}</span>'">`
+      : `<span class="text-3xl">${d.emoji || '💊'}</span>`;
+
     card.innerHTML = `
       <!-- 일괄 삭제 모드 체크박스 오버레이 -->
       <div class="bulk-check-overlay hidden absolute top-2 right-2 z-10">
@@ -1263,7 +1267,7 @@ function renderDrugs() {
       </div>
       <div class="p-3">
         <div class="flex items-start justify-between mb-2">
-          <span class="text-3xl">${d.emoji || '💊'}</span>
+          ${thumbHtml}
           <span class="text-xs bg-slate-100 text-slate-500 font-semibold px-2 py-0.5 rounded-full">${d.category || '기타'}</span>
         </div>
         <div class="font-bold text-slate-800 text-sm leading-tight mb-1 line-clamp-2">${d.canonical_name}</div>
@@ -3663,56 +3667,32 @@ async function aiSummarizeNote() {
   if (!btn) return;
   const origText = btn.textContent;
   btn.disabled = true;
-  btn.textContent = '🤖 AI 작성 중...';
-
-  // 채울 필드 확인 (비어있는 것만 채울지 전부 덮어쓸지)
-  const effEmpty  = !(effEl?.value.trim());
-  const dosEmpty  = !(dosEl?.value.trim());
-  const noteEmpty = !(noteEl?.value.trim());
-  const fillAll   = effEmpty && dosEmpty && noteEmpty; // 전부 비었으면 전부 채움
+  btn.textContent = '⏳ AI 작성 중...';
 
   try {
-    const payload = {
-      name:     currentDrug?.canonical_name || '',
-      efficacy: (effEl?.value  || '').slice(0, 200),
-      dosage:   (dosEl?.value  || '').slice(0, 200),
-    };
     const res = await fetch(WORKER_URL + '/?action=summarizeDrugBoard', {
       method:  'POST',
       headers: { 'Content-Type': 'application/json' },
-      body:    JSON.stringify(payload),
-      signal:  AbortSignal.timeout(20000),
+      body:    JSON.stringify({
+        name:     currentDrug?.canonical_name || '',
+        efficacy: (effEl?.value || '').slice(0, 200),
+        dosage:   (dosEl?.value || '').slice(0, 200),
+      }),
+      signal: AbortSignal.timeout(25000),
     });
     const result = await res.json();
     if (!res.ok || result.error) throw new Error(result.error || 'AI 자동완성 실패');
 
+    // 항상 덮어쓰기 — confirm 없이 바로 적용
     let filled = [];
-    // 효능·효과 — 비어 있거나 전부 채우기 모드일 때
-    if (effEl && result.efficacy && (effEmpty || fillAll)) {
-      effEl.value = result.efficacy;
-      filled.push('효능·효과');
-    }
-    // 용법·용량
-    if (dosEl && result.dosage && (dosEmpty || fillAll)) {
-      dosEl.value = result.dosage;
-      filled.push('용법·용량');
-    }
-    // 약사 한마디
-    if (noteEl && result.pharmacist_note && (noteEmpty || fillAll)) {
-      noteEl.value = result.pharmacist_note;
-      filled.push('약사 한마디');
-    }
+    if (effEl  && result.efficacy)        { effEl.value  = result.efficacy;        filled.push('효능'); }
+    if (dosEl  && result.dosage)          { dosEl.value  = result.dosage;          filled.push('용법'); }
+    if (noteEl && result.pharmacist_note) { noteEl.value = result.pharmacist_note; filled.push('약사 한마디'); }
 
     if (filled.length > 0) {
-      showToast('✅ AI 자동완성: ' + filled.join(', ') + ' 작성됨!');
+      showToast('✅ ' + filled.join(' · ') + ' 자동 입력됨');
     } else {
-      // 모든 필드가 이미 채워져 있을 때는 덮어쓰기 여부 확인
-      if (confirm('이미 내용이 있습니다. AI가 작성한 내용으로 전부 교체할까요?')) {
-        if (effEl  && result.efficacy)        effEl.value  = result.efficacy;
-        if (dosEl  && result.dosage)          dosEl.value  = result.dosage;
-        if (noteEl && result.pharmacist_note) noteEl.value = result.pharmacist_note;
-        showToast('✅ AI 내용으로 교체 완료!');
-      }
+      showToast('⚠️ AI가 내용을 생성하지 못했어요. 약품명을 확인해주세요.');
     }
   } catch(e) {
     showToast('❌ AI 자동완성 실패: ' + (e.message || ''));
