@@ -822,13 +822,16 @@ async function loadDrugs() {
   loadEl.classList.remove('hidden');
   document.getElementById('drug-grid').innerHTML = '';
   try {
-    const { data, error } = await Promise.race([
-      sb.from('drugs').select('*').order('created_at', { ascending: false }).then(r => r),
+    // Cloudflare Worker 경유 (브라우저 확장 프로그램 차단 우회)
+    const res = await Promise.race([
+      fetch(WORKER_URL + '/?action=boardGetDrugs'),
       new Promise((_, rej) => setTimeout(() =>
-        rej(new Error('연결 시간 초과\nSupabase 프로젝트가 일시 중지됐을 수 있습니다\nsupabase.com → 프로젝트 → Restore 클릭')), 12000))
+        rej(new Error('연결 시간 초과\nWorker 응답 없음 — Cloudflare 대시보드에서 재배포 필요')), 15000))
     ]);
-    if (error) throw error;
-    drugs = data || [];
+    if (!res.ok) throw new Error('Worker 오류: ' + res.status);
+    const data = await res.json();
+    if (data && data.error) throw new Error(data.error);
+    drugs = Array.isArray(data) ? data : [];
     loadEl.classList.add('hidden');
   } catch(e) {
     console.error('loadDrugs:', e);
@@ -854,12 +857,11 @@ async function loadVersions(drugId) {
   document.getElementById('version-list').innerHTML = '';
   document.getElementById('ver-empty').classList.add('hidden');
   try {
-    const { data, error } = await sb
-      .from('drug_versions')
-      .select('*')
-      .eq('drug_id', drugId)
-      .order('downloads_count', { ascending: false });
-    if (error) throw error;
+    // Worker 경유 (브라우저 확장 프로그램 차단 우회)
+    const res = await fetch(WORKER_URL + '/?action=boardGetVersions&drugId=' + encodeURIComponent(drugId));
+    if (!res.ok) throw new Error('Worker 오류: ' + res.status);
+    const data = await res.json();
+    if (data && data.error) throw new Error(data.error);
     document.getElementById('ver-loading').classList.add('hidden');
     if (!data || data.length === 0) {
       document.getElementById('ver-empty').classList.remove('hidden');
