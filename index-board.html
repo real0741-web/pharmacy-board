@@ -1343,17 +1343,17 @@ function renderVersions(versions) {
       </div>
       <div class="ver-preview">
         <div class="flex gap-2 mb-3">${imgHtml}</div>
+        ${v.badges ? `<div class="flex flex-wrap gap-1.5 mb-2">${v.badges.split(',').map(b=>b.trim()).filter(Boolean).map(b=>`<span class="text-xs bg-teal-50 text-teal-700 font-semibold px-2 py-0.5 rounded-full">${b}</span>`).join('')}</div>` : ''}
         <div class="space-y-2 text-sm text-slate-700">
-          <div><span class="font-bold text-teal-700 text-xs">⚕️ 효능·효과</span><br/>${v.efficacy || ''}</div>
-          <div><span class="font-bold text-blue-600 text-xs">💉 용법·용량</span><br/>${v.dosage || ''}</div>
-          ${v.pharmacist_note ? `<div class="bg-amber-50 rounded-lg p-2.5"><span class="font-bold text-amber-700 text-xs">💬 약사 한마디</span><br/>${v.pharmacist_note}</div>` : ''}
+          ${v.efficacy ? `<div><span class="font-bold text-teal-700 text-xs">📝 한 줄 설명(태그라인)</span><br/>${v.efficacy}</div>` : ''}
+          ${v.pharmacist_note ? `<div class="bg-amber-50 rounded-lg p-2.5"><span class="font-bold text-amber-700 text-xs">📋 복약 지도</span><br/>${v.pharmacist_note}</div>` : ''}
+          ${v.dosage ? `<div><span class="font-bold text-blue-600 text-xs">🔬 제품 정보(성분·용량)</span><br/>${v.dosage}</div>` : ''}
         </div>
-        <div class="flex gap-2 mt-3">
+        <div class="flex flex-wrap gap-2 mt-3">
           <button onclick="downloadVersion('${v.id}')" class="btn-primary flex-1 py-2 text-sm">✅ 이 버전 키오스크에 가져오기</button>
           <button onclick="copyVersionToNew('${v.id}')" class="btn-secondary px-3 py-2 text-xs">✏️ 토대로 내 버전 만들기</button>
-          ${isOwner ? `
-            <button onclick="editVersion('${v.id}')" class="btn-secondary px-3 py-2 text-xs">수정</button>
-            <button onclick="deleteVersion('${v.id}')" class="px-3 py-2 text-xs rounded-lg bg-red-50 text-red-500 border-none cursor-pointer font-semibold">삭제</button>
+          ${(isOwner || isAdminMode) ? `
+            <button onclick="deleteVersion('${v.id}')" class="px-3 py-2 text-xs rounded-lg bg-red-50 text-red-500 border border-red-100 cursor-pointer font-semibold hover:bg-red-100 transition-all">🗑 삭제</button>
           ` : ''}
         </div>
       </div>`;
@@ -1538,15 +1538,22 @@ async function downloadVersion(versionId) {
     // 키오스크 선택 팝업 표시 (다운로드 카운트보다 먼저)
     showKioskSelector(exportData);
 
-    // 다운로드 카운트 증가 (fire-and-forget, sb null 가드)
-    if (sb) {
-      sb.rpc('increment_version_downloads', { p_version_id: versionId }).catch(async () => {
+    // 다운로드 카운트 증가 (fire-and-forget, async IIFE로 오류 격리)
+    (async () => {
+      try {
+        if (sb) {
+          const { error } = await sb.rpc('increment_version_downloads', { p_version_id: versionId });
+          if (error) throw error;
+        }
+      } catch {
         try {
-          const { data: cur } = await sb.from('drug_versions').select('downloads_count').eq('id', versionId).single();
-          await sb.from('drug_versions').update({ downloads_count: (cur?.downloads_count||0)+1 }).eq('id', versionId);
+          if (sb) {
+            const { data: cur } = await sb.from('drug_versions').select('downloads_count').eq('id', versionId).single();
+            await sb.from('drug_versions').update({ downloads_count: (cur?.downloads_count||0)+1 }).eq('id', versionId);
+          }
         } catch(_) {}
-      });
-    }
+      }
+    })();
 
     if (currentDrug) setTimeout(() => loadVersions(currentDrug.id), 1500);
   } catch(e) {
@@ -1804,8 +1811,16 @@ async function editVersion(versionId) {
 
 async function deleteVersion(versionId) {
   if (!confirm('이 버전을 삭제하시겠습니까?')) return;
-  const { error } = await sb.from('drug_versions').delete().eq('id', versionId);
-  if (error) { showToast('삭제 실패: ' + error.message); return; }
+  try {
+    const res = await fetch(WORKER_URL + '/?action=boardDeleteVersion', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ versionId }),
+      signal: AbortSignal.timeout(10000),
+    });
+    const data = await res.json();
+    if (!data.ok) throw new Error(data.error || '삭제 실패');
+  } catch(e) { showToast('❌ 삭제 실패: ' + e.message); return; }
   showToast('버전이 삭제되었습니다.');
   if (currentDrug) loadVersions(currentDrug.id);
 }
