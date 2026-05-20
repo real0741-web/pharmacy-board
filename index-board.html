@@ -193,8 +193,11 @@
     <div id="ver-loading" class="text-center py-10 text-slate-400 text-sm animate-pulse">버전 불러오는 중...</div>
     <div id="ver-empty" class="hidden text-center py-10">
       <div class="text-3xl mb-2">📝</div>
-      <div class="text-sm text-slate-400">아직 등록된 버전이 없어요</div>
-      <button onclick="openVersionUpload()" class="btn-primary px-5 py-2 text-sm mt-3">첫 버전 등록하기</button>
+      <div class="text-sm text-slate-400 mb-3">아직 등록된 버전이 없어요</div>
+      <div class="flex flex-col gap-2 items-center">
+        <button onclick="openVersionUpload()" class="btn-primary px-5 py-2 text-sm">✏️ 첫 버전 등록하기</button>
+        <button onclick="downloadDrugBase()" class="btn-secondary px-5 py-2 text-sm">📥 약품 기본정보로 키오스크에 가져오기</button>
+      </div>
     </div>
   </div>
 </div>
@@ -1059,6 +1062,27 @@ const KIOSK_URLS = {
   shop1: localStorage.getItem('_kioskUrl_shop1') || 'https://real0741-web.github.io/local-pharmacy/',
   shop2: localStorage.getItem('_kioskUrl_shop2') || '',
 };
+
+// 버전 없는 약품 — 약품 기본정보만으로 키오스크 내보내기
+function downloadDrugBase() {
+  if (!currentDrug) { showToast('❌ 약품 정보가 없습니다.'); return; }
+  const exportData = {
+    source: '약품공유게시판',
+    version: 2,
+    drug: {
+      name:           currentDrug.canonical_name || '',
+      emoji:          currentDrug.emoji          || '💊',
+      cat:            currentDrug.category       || '기타',
+      tagline:        (currentDrug.func_tags || []).join(', ').slice(0, 60),
+      info:           '',
+      pharmacistNote: '',
+      imageUrl:       '',
+      price:          0,
+      list:           0,
+    }
+  };
+  showKioskSelector(exportData);
+}
 
 async function downloadVersion(versionId) {
   showToast('⏳ 버전 정보를 불러오는 중...');
@@ -2462,34 +2486,67 @@ async function _aiSummarizeBoardDrug(p) {
    AI 약사 한마디 자동완성 (버전 등록 모달용)
 ══════════════════════════════════════ */
 async function aiSummarizeNote() {
-  const btn     = document.getElementById('vm-ai-btn');
-  const noteEl  = document.getElementById('vm-note');
-  const effEl   = document.getElementById('vm-efficacy');
-  const dosEl   = document.getElementById('vm-dosage');
+  const btn    = document.getElementById('vm-ai-btn');
+  const noteEl = document.getElementById('vm-note');
+  const effEl  = document.getElementById('vm-efficacy');
+  const dosEl  = document.getElementById('vm-dosage');
   if (!btn) return;
   const origText = btn.textContent;
   btn.disabled = true;
-  btn.textContent = '🤖 AI 요약 중...';
+  btn.textContent = '🤖 AI 작성 중...';
+
+  // 채울 필드 확인 (비어있는 것만 채울지 전부 덮어쓸지)
+  const effEmpty  = !(effEl?.value.trim());
+  const dosEmpty  = !(dosEl?.value.trim());
+  const noteEmpty = !(noteEl?.value.trim());
+  const fillAll   = effEmpty && dosEmpty && noteEmpty; // 전부 비었으면 전부 채움
+
   try {
     const payload = {
-      name:  currentDrug?.canonical_name || '',
-      efcy:  (effEl?.value || '').slice(0, 200),
-      use:   (dosEl?.value || '').slice(0, 200),
-      warn:  '',
-      ingr:  ''
+      name:     currentDrug?.canonical_name || '',
+      efficacy: (effEl?.value  || '').slice(0, 200),
+      dosage:   (dosEl?.value  || '').slice(0, 200),
     };
-    const res = await fetch(WORKER_URL + '/?action=summarizeDrug', {
+    const res = await fetch(WORKER_URL + '/?action=summarizeDrugBoard', {
       method:  'POST',
       headers: { 'Content-Type': 'application/json' },
       body:    JSON.stringify(payload),
-      signal:  AbortSignal.timeout(15000)
+      signal:  AbortSignal.timeout(20000),
     });
     const result = await res.json();
-    if (!res.ok || result.error) throw new Error(result.error || 'AI 요약 실패');
-    if (result.note && noteEl) noteEl.value = result.note;
-    showToast('✅ 약사 한마디 자동완성!');
+    if (!res.ok || result.error) throw new Error(result.error || 'AI 자동완성 실패');
+
+    let filled = [];
+    // 효능·효과 — 비어 있거나 전부 채우기 모드일 때
+    if (effEl && result.efficacy && (effEmpty || fillAll)) {
+      effEl.value = result.efficacy;
+      filled.push('효능·효과');
+    }
+    // 용법·용량
+    if (dosEl && result.dosage && (dosEmpty || fillAll)) {
+      dosEl.value = result.dosage;
+      filled.push('용법·용량');
+    }
+    // 약사 한마디
+    if (noteEl && result.pharmacist_note && (noteEmpty || fillAll)) {
+      noteEl.value = result.pharmacist_note;
+      filled.push('약사 한마디');
+    }
+
+    if (filled.length > 0) {
+      showToast('✅ AI 자동완성: ' + filled.join(', ') + ' 작성됨!');
+    } else {
+      // 모든 필드가 이미 채워져 있을 때는 덮어쓰기 여부 확인
+      if (confirm('이미 내용이 있습니다. AI가 작성한 내용으로 전부 교체할까요?')) {
+        if (effEl  && result.efficacy)        effEl.value  = result.efficacy;
+        if (dosEl  && result.dosage)          dosEl.value  = result.dosage;
+        if (noteEl && result.pharmacist_note) noteEl.value = result.pharmacist_note;
+        showToast('✅ AI 내용으로 교체 완료!');
+      }
+    }
   } catch(e) {
-    showToast('AI 요약 실패: ' + (e.message || ''));
+    showToast('❌ AI 자동완성 실패: ' + (e.message || ''));
+    console.error('[aiSummarizeNote]', e);
   } finally {
     btn.disabled = false;
     btn.textContent = origText;
