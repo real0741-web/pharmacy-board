@@ -643,26 +643,42 @@
       </div>
     </div>
 
+    <!-- ① 한 줄 설명 (tagline) -->
     <div class="field">
-      <label>⚕️ 한줄 설명 · 효능 요약 <span class="text-red-400">*</span>
-        <span class="text-slate-400 font-normal ml-1">(60자 이내 권장)</span></label>
+      <label>📝 한 줄 설명 (태그라인) <span class="text-red-400">*</span>
+        <span class="text-slate-400 font-normal ml-1">(60자 이내)</span></label>
       <textarea id="vm-efficacy" rows="2" placeholder="예: 두통·치통·생리통·근육통 완화, 해열"
         style="border:1.5px solid #e2e8f0;border-radius:10px;padding:9px 12px;font-size:14px;width:100%;resize:vertical;"></textarea>
     </div>
+    <!-- ② 배지 (badges) -->
     <div class="field">
-      <label>💉 복약 지도 · 용법·용량 <span class="text-red-400">*</span></label>
-      <textarea id="vm-dosage" rows="3" placeholder="예: 성인 1회 1~2정, 1일 2~3회 복용. 4~6시간 간격 유지. 공복 복용 시 위장장애 가능."
-        style="border:1.5px solid #e2e8f0;border-radius:10px;padding:9px 12px;font-size:14px;width:100%;resize:vertical;"></textarea>
+      <label>🏷 배지 <span class="text-slate-400 font-normal">(콤마 구분 · 선택)</span></label>
+      <input id="vm-badges" type="text" placeholder="예: pick,추천,냉장보관,처방전필요"
+        style="border:1.5px solid #e2e8f0;border-radius:10px;padding:9px 12px;font-size:14px;width:100%;"/>
+      <div class="flex flex-wrap gap-1.5 mt-2">
+        <span class="badge-preset text-xs px-2.5 py-1 rounded-full bg-slate-100 text-slate-600 cursor-pointer font-semibold hover:bg-teal-100 hover:text-teal-700 transition-all" onclick="addBadgePreset('pick')">⭐ pick</span>
+        <span class="badge-preset text-xs px-2.5 py-1 rounded-full bg-slate-100 text-slate-600 cursor-pointer font-semibold hover:bg-teal-100 hover:text-teal-700 transition-all" onclick="addBadgePreset('추천')">👍 추천</span>
+        <span class="badge-preset text-xs px-2.5 py-1 rounded-full bg-slate-100 text-slate-600 cursor-pointer font-semibold hover:bg-teal-100 hover:text-teal-700 transition-all" onclick="addBadgePreset('냉장보관')">🧊 냉장보관</span>
+        <span class="badge-preset text-xs px-2.5 py-1 rounded-full bg-slate-100 text-slate-600 cursor-pointer font-semibold hover:bg-teal-100 hover:text-teal-700 transition-all" onclick="addBadgePreset('처방전필요')">Rx 처방전필요</span>
+        <span class="badge-preset text-xs px-2.5 py-1 rounded-full bg-slate-100 text-slate-600 cursor-pointer font-semibold hover:bg-teal-100 hover:text-teal-700 transition-all" onclick="addBadgePreset('고령자주의')">⚠️ 고령자주의</span>
+      </div>
     </div>
+    <!-- ③ 복약 지도 (pharmacistNote) -->
     <div class="field">
       <div class="flex items-center justify-between mb-1">
-        <label class="mb-0">💬 약사 한마디 <span class="text-slate-400 font-normal">(선택 · 1~2문장 해요체)</span></label>
+        <label class="mb-0">📋 복약 지도 <span class="text-slate-400 font-normal">(해요체 1~2문장)</span></label>
         <button id="vm-ai-btn" type="button" onclick="aiSummarizeNote()"
           class="flex items-center gap-1 text-xs font-bold text-slate-500 bg-slate-100 hover:bg-slate-200 border border-slate-200 rounded-lg px-2.5 py-1 transition-all">
           🔄 AI 다시 작성
         </button>
       </div>
-      <textarea id="vm-note" rows="2" placeholder="예: 식후 복용 권장. 위가 약하신 분께 특히 추천해요."
+      <textarea id="vm-note" rows="2" placeholder="예: 식후에 드셔야 속 쓰림이 덜해요. 졸음이 올 수 있어서 운전 전엔 드시지 마세요."
+        style="border:1.5px solid #e2e8f0;border-radius:10px;padding:9px 12px;font-size:14px;width:100%;resize:vertical;"></textarea>
+    </div>
+    <!-- ④ 제품 정보 (info — 성분·함량/용량) -->
+    <div class="field">
+      <label>🔬 제품 정보 (성분·함량/용량) <span class="text-red-400">*</span></label>
+      <textarea id="vm-dosage" rows="3" placeholder="예: 클레마스틴푸마르산염 / 1회 2.5~5mL, 1일 1~2회 식후"
         style="border:1.5px solid #e2e8f0;border-radius:10px;padding:9px 12px;font-size:14px;width:100%;resize:vertical;"></textarea>
     </div>
 
@@ -1512,6 +1528,7 @@ async function downloadVersion(versionId) {
         tagline:        (v.efficacy || '').slice(0, 60),
         info:           v.dosage || '',
         pharmacistNote: v.pharmacist_note || '',
+        badges:         v.badges || '',
         imageUrl:       v.image_url || '',
         price:          0,
         list:           0,
@@ -1634,6 +1651,7 @@ function openVersionUpload(prefill) {
   document.getElementById('vm-efficacy').value        = prefill?.efficacy || '';
   document.getElementById('vm-dosage').value          = prefill?.dosage || '';
   document.getElementById('vm-note').value            = prefill?.pharmacist_note || '';
+  document.getElementById('vm-badges').value          = prefill?.badges || '';
   _uploadFiles = [null, null, null];
   [1,2,3].forEach(i => {
     const p = document.getElementById('img-preview-'+i);
@@ -1671,10 +1689,11 @@ async function submitVersion() {
   const efficacy  = document.getElementById('vm-efficacy').value.trim();
   const dosage    = document.getElementById('vm-dosage').value.trim();
   const note      = document.getElementById('vm-note').value.trim();
+  const badges    = document.getElementById('vm-badges').value.trim();
   const imgUrl1   = document.getElementById('vm-img-url-1').value.trim();
   errEl.classList.add('hidden');
   if (!efficacy || !dosage) {
-    errEl.textContent = '효능과 용법은 필수입니다.';
+    errEl.textContent = '한 줄 설명과 제품 정보는 필수입니다.';
     errEl.classList.remove('hidden'); return;
   }
   btn.disabled = true; btn.textContent = '등록 중...';
@@ -1696,6 +1715,7 @@ async function submitVersion() {
     pharmacy_name: currentProfile?.pharmacy_name || '관리자',
     image_url: uploadedUrls[0]||null, image_url_2: uploadedUrls[1]||null, image_url_3: uploadedUrls[2]||null,
     efficacy, dosage, pharmacist_note: note||null,
+    badges: badges || null,
   };
   // Worker 경유 저장 (브라우저 확장 차단 우회)
   const saveRes = await fetch(WORKER_URL + '/?action=boardSaveVersion', {
@@ -3374,6 +3394,7 @@ async function startBulkRegister() {
             efficacy:        drug.efficacy        || '',
             dosage:          drug.dosage          || '',
             pharmacist_note: drug.pharmacist_note || null,
+            badges:          drug.badges          || null,
             image_url:       drug.imageUrl        || null,
           },
         }),
@@ -3638,9 +3659,10 @@ function vmPickImage(url, wrap) {
 
 async function _vmFetchAIText(drugName, force) {
   try {
-    const effEl  = document.getElementById('vm-efficacy');
-    const dosEl  = document.getElementById('vm-dosage');
-    const noteEl = document.getElementById('vm-note');
+    const effEl    = document.getElementById('vm-efficacy');
+    const dosEl    = document.getElementById('vm-dosage');
+    const noteEl   = document.getElementById('vm-note');
+    const badgesEl = document.getElementById('vm-badges');
 
     const res = await fetch(WORKER_URL + '/?action=summarizeDrugBoard', {
       method: 'POST',
@@ -3651,9 +3673,10 @@ async function _vmFetchAIText(drugName, force) {
     const result = await res.json();
     if (!res.ok || result.error) throw new Error(result.error);
 
-    if (effEl  && result.efficacy        && (force || !effEl.value.trim()))  effEl.value  = result.efficacy;
-    if (dosEl  && result.dosage          && (force || !dosEl.value.trim()))  dosEl.value  = result.dosage;
-    if (noteEl && result.pharmacist_note && (force || !noteEl.value.trim())) noteEl.value = result.pharmacist_note;
+    if (effEl    && result.efficacy        && (force || !effEl.value.trim()))    effEl.value    = result.efficacy;
+    if (dosEl    && result.dosage          && (force || !dosEl.value.trim()))    dosEl.value    = result.dosage;
+    if (noteEl   && result.pharmacist_note && (force || !noteEl.value.trim()))   noteEl.value   = result.pharmacist_note;
+    if (badgesEl && result.badges          && (force || !badgesEl.value.trim())) badgesEl.value = result.badges;
   } catch(e) {
     console.warn('[vmFetchAIText]', e);
   }
@@ -3685,9 +3708,11 @@ async function aiSummarizeNote() {
 
     // 항상 덮어쓰기 — confirm 없이 바로 적용
     let filled = [];
-    if (effEl  && result.efficacy)        { effEl.value  = result.efficacy;        filled.push('효능'); }
-    if (dosEl  && result.dosage)          { dosEl.value  = result.dosage;          filled.push('용법'); }
-    if (noteEl && result.pharmacist_note) { noteEl.value = result.pharmacist_note; filled.push('약사 한마디'); }
+    const badgesEl2 = document.getElementById('vm-badges');
+    if (effEl    && result.efficacy)        { effEl.value    = result.efficacy;        filled.push('한 줄 설명'); }
+    if (dosEl    && result.dosage)          { dosEl.value    = result.dosage;          filled.push('제품 정보'); }
+    if (noteEl   && result.pharmacist_note) { noteEl.value   = result.pharmacist_note; filled.push('복약 지도'); }
+    if (badgesEl2 && result.badges)         { badgesEl2.value = result.badges;         filled.push('배지'); }
 
     if (filled.length > 0) {
       showToast('✅ ' + filled.join(' · ') + ' 자동 입력됨');
@@ -3700,6 +3725,18 @@ async function aiSummarizeNote() {
   } finally {
     btn.disabled = false;
     btn.textContent = origText;
+  }
+}
+
+// 배지 프리셋 클릭 — 콤마 구분으로 추가
+function addBadgePreset(badge) {
+  const el = document.getElementById('vm-badges');
+  if (!el) return;
+  const cur = el.value.trim();
+  const parts = cur ? cur.split(',').map(s => s.trim()).filter(Boolean) : [];
+  if (!parts.includes(badge)) {
+    parts.push(badge);
+    el.value = parts.join(',');
   }
 }
 
