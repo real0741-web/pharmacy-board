@@ -1235,16 +1235,21 @@ async function submitVersion() {
     }
   }
   const payload = {
-    drug_id: drugId, user_id: currentUser?.id || null,
-    pharmacy_name: currentProfile?.pharmacy_name || '익명약국',
+    drug_id: drugId,
+    pharmacy_name: currentProfile?.pharmacy_name || '관리자',
     image_url: uploadedUrls[0]||null, image_url_2: uploadedUrls[1]||null, image_url_3: uploadedUrls[2]||null,
     efficacy, dosage, pharmacist_note: note||null,
   };
-  let error;
-  if (versionId) { ({ error } = await sb.from('drug_versions').update(payload).eq('id', versionId)); }
-  else           { ({ error } = await sb.from('drug_versions').insert(payload)); }
+  // Worker 경유 저장 (브라우저 확장 차단 우회)
+  const saveRes = await fetch(WORKER_URL + '/?action=boardSaveVersion', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ payload, versionId: versionId || null }),
+    signal: AbortSignal.timeout(15000),
+  });
   btn.disabled = false; btn.textContent = '등록하기';
-  if (error) { errEl.textContent = '오류: ' + error.message; errEl.classList.remove('hidden'); return; }
+  const saveData = await saveRes.json();
+  if (!saveData.ok) { errEl.textContent = '오류: ' + (saveData.error||'저장 실패'); errEl.classList.remove('hidden'); return; }
   closeVersionModal();
   showToast('버전이 등록되었습니다!');
   if (currentDrug) loadVersions(currentDrug.id);
@@ -2314,7 +2319,7 @@ async function initMfdsKey() {
   } catch(e) {}
 }
 const proxyFetchBoard = (apiUrl, opts={}) =>
-  fetch(`${BOARD_PROXY}/?url=${encodeURIComponent(apiUrl)}`, opts);
+  fetch(`${WORKER_URL}/?url=${encodeURIComponent(apiUrl)}`, opts);
 
 async function searchBoardDrugByName() {
   const keyword = (document.getElementById('nd-search-input')?.value || '').trim();
@@ -2420,7 +2425,7 @@ async function _aiSummarizeBoardDrug(p) {
   var status=document.getElementById('nd-search-status');
   try {
     if (status) { status.textContent='🤖 AI가 복약지도 정리 중...'; status.style.color='#64748b'; }
-    var res = await fetch(BOARD_PROXY + '/?action=summarizeDrug', {
+    var res = await fetch(WORKER_URL + '/?action=summarizeDrug', {
       method:'POST', headers:{'Content-Type':'application/json'},
       body: JSON.stringify(p), signal: AbortSignal.timeout(15000),
     });
@@ -2456,7 +2461,7 @@ async function aiSummarizeNote() {
       warn:  '',
       ingr:  ''
     };
-    const res = await fetch(BOARD_PROXY + '/?action=summarizeDrug', {
+    const res = await fetch(WORKER_URL + '/?action=summarizeDrug', {
       method:  'POST',
       headers: { 'Content-Type': 'application/json' },
       body:    JSON.stringify(payload),
