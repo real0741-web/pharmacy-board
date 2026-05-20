@@ -588,8 +588,9 @@
   <div class="bg-white rounded-2xl shadow-2xl w-full max-w-lg p-6 fade-in max-h-[92vh] overflow-y-auto">
     <div class="flex items-center justify-between mb-3">
       <div>
-        <h2 class="text-lg font-extrabold" id="vm-title">버전 등록</h2>
-        <div id="vm-drug-name" class="text-xs text-slate-400 mt-0.5"></div>
+        <h2 class="text-sm font-bold text-slate-400" id="vm-title">버전 등록</h2>
+        <div id="vm-drug-name" class="text-xl font-extrabold text-slate-800 mt-0.5 leading-tight"></div>
+        <div id="vm-drug-mfr" class="text-xs text-slate-400 mt-0.5"></div>
       </div>
       <button onclick="closeVersionModal()" class="w-8 h-8 rounded-full bg-slate-100 text-slate-500 text-sm">✕</button>
     </div>
@@ -610,16 +611,19 @@
     <div class="field">
       <label>📦 박스 사진 (제약사 공식 이미지 URL 또는 직접 업로드)</label>
       <div class="grid grid-cols-3 gap-2 mb-2">
-        <div>
+        <div class="relative">
           <div id="img-preview-1" class="w-full aspect-square rounded-xl border-2 border-dashed border-slate-200 flex items-center justify-center text-2xl bg-slate-50 overflow-hidden cursor-pointer" onclick="document.getElementById('img-file-1').click()">📦</div>
+          <button id="img-clear-1" onclick="clearImgSlot(1)" class="hidden absolute top-1 right-1 w-5 h-5 rounded-full bg-red-500 text-white text-xs font-extrabold z-10 leading-none shadow flex items-center justify-center hover:bg-red-600 transition-all" style="pointer-events:auto;">✕</button>
           <input id="img-file-1" type="file" accept="image/*" class="hidden" onchange="handleFileUpload(1,event)"/>
         </div>
-        <div>
+        <div class="relative">
           <div id="img-preview-2" class="w-full aspect-square rounded-xl border-2 border-dashed border-slate-200 flex items-center justify-center text-2xl bg-slate-50 overflow-hidden cursor-pointer" onclick="document.getElementById('img-file-2').click()">+</div>
+          <button id="img-clear-2" onclick="clearImgSlot(2)" class="hidden absolute top-1 right-1 w-5 h-5 rounded-full bg-red-500 text-white text-xs font-extrabold z-10 leading-none shadow flex items-center justify-center hover:bg-red-600 transition-all" style="pointer-events:auto;">✕</button>
           <input id="img-file-2" type="file" accept="image/*" class="hidden" onchange="handleFileUpload(2,event)"/>
         </div>
-        <div>
+        <div class="relative">
           <div id="img-preview-3" class="w-full aspect-square rounded-xl border-2 border-dashed border-slate-200 flex items-center justify-center text-2xl bg-slate-50 overflow-hidden cursor-pointer" onclick="document.getElementById('img-file-3').click()">+</div>
+          <button id="img-clear-3" onclick="clearImgSlot(3)" class="hidden absolute top-1 right-1 w-5 h-5 rounded-full bg-red-500 text-white text-xs font-extrabold z-10 leading-none shadow flex items-center justify-center hover:bg-red-600 transition-all" style="pointer-events:auto;">✕</button>
           <input id="img-file-3" type="file" accept="image/*" class="hidden" onchange="handleFileUpload(3,event)"/>
         </div>
       </div>
@@ -1653,6 +1657,8 @@ function openVersionUpload(prefill) {
   if (!currentDrug) return;
   document.getElementById('vm-title').textContent     = '버전 등록';
   document.getElementById('vm-drug-name').textContent = currentDrug.canonical_name;
+  const mfrEl = document.getElementById('vm-drug-mfr');
+  if (mfrEl) mfrEl.textContent = [currentDrug.manufacturer_name, currentDrug.category].filter(Boolean).join(' · ');
   document.getElementById('vm-drug-id').value         = currentDrug.id;
   document.getElementById('vm-version-id').value      = '';
   document.getElementById('vm-efficacy').value        = prefill?.efficacy || '';
@@ -1661,8 +1667,10 @@ function openVersionUpload(prefill) {
   document.getElementById('vm-badges').value          = prefill?.badges || '';
   _uploadFiles = [null, null, null];
   [1,2,3].forEach(i => {
-    const p = document.getElementById('img-preview-'+i);
+    const p   = document.getElementById('img-preview-'+i);
+    const clr = document.getElementById('img-clear-'+i);
     p.innerHTML = i===1 ? '📦' : '+';
+    if (clr) clr.classList.add('hidden');
     document.getElementById('img-file-'+i).value = '';
   });
   document.getElementById('vm-img-url-1').value = prefill?.image_url || '';
@@ -2035,6 +2043,8 @@ function handleFileUpload(idx, event) {
   reader.onload = function(e) {
     const p = document.getElementById('img-preview-'+idx);
     p.innerHTML = '<img src="' + e.target.result + '" class="w-full h-full object-cover"/>';
+    const clr = document.getElementById('img-clear-'+idx);
+    if (clr) clr.classList.remove('hidden');
   };
   reader.readAsDataURL(file);
 }
@@ -2044,9 +2054,31 @@ function previewUrlImage(idx) {
   if (!urlEl) return;
   const url = urlEl.value.trim();
   const p   = document.getElementById('img-preview-' + idx);
+  const clr = document.getElementById('img-clear-' + idx);
   if (!p) return;
-  if (url) { p.innerHTML = '<img src="' + url + '" class="w-full h-full object-cover" onerror="this.parentElement.innerHTML=\'❌\'"/>'; }
-  else     { p.innerHTML = idx === 1 ? '📦' : '+'; }
+  if (url) {
+    p.innerHTML = '<img src="' + url + '" class="w-full h-full object-cover" onerror="this.parentElement.innerHTML=\'❌\'"/>';
+    if (clr) clr.classList.remove('hidden');
+  } else {
+    p.innerHTML = idx === 1 ? '📦' : '+';
+    if (clr) clr.classList.add('hidden');
+  }
+}
+
+// 이미지 슬롯 초기화 (X버튼 클릭)
+function clearImgSlot(idx) {
+  _uploadFiles[idx - 1] = null;
+  const p   = document.getElementById('img-preview-'+idx);
+  const clr = document.getElementById('img-clear-'+idx);
+  const fi  = document.getElementById('img-file-'+idx);
+  if (p)   p.innerHTML = idx === 1 ? '📦' : '+';
+  if (clr) clr.classList.add('hidden');
+  if (fi)  fi.value = '';
+  // 슬롯 1은 URL 입력도 같이 지우기
+  if (idx === 1) {
+    const urlEl = document.getElementById('vm-img-url-1');
+    if (urlEl) urlEl.value = '';
+  }
 }
 
 function openImageFull(url) {
@@ -3682,7 +3714,7 @@ async function _vmFetchAIText(drugName, force) {
     const res = await fetch(WORKER_URL + '/?action=summarizeDrugBoard', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name: drugName, efficacy: '', dosage: '' }),
+      body: JSON.stringify({ name: drugName, manufacturer: currentDrug?.manufacturer_name || '', efficacy: '', dosage: '' }),
       signal: AbortSignal.timeout(20000),
     });
     const result = await res.json();
@@ -3712,9 +3744,10 @@ async function aiSummarizeNote() {
       method:  'POST',
       headers: { 'Content-Type': 'application/json' },
       body:    JSON.stringify({
-        name:     currentDrug?.canonical_name || '',
-        efficacy: (effEl?.value || '').slice(0, 200),
-        dosage:   (dosEl?.value || '').slice(0, 200),
+        name:         currentDrug?.canonical_name  || '',
+        manufacturer: currentDrug?.manufacturer_name || '',
+        efficacy:     (effEl?.value || '').slice(0, 200),
+        dosage:       (dosEl?.value || '').slice(0, 200),
       }),
       signal: AbortSignal.timeout(25000),
     });
