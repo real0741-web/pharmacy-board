@@ -777,6 +777,22 @@ window.addEventListener('DOMContentLoaded', () => {
     else { currentProfile = null; }
     updateHeaderAuth();
   });
+  // 초기 history 상태 설정
+  history.replaceState({ view: 'list' }, '', location.pathname);
+
+  // 브라우저 뒤로가기/앞으로가기 처리
+  window.addEventListener('popstate', function(e) {
+    const state = e.state;
+    if (!state) { showView('list', false); return; }
+    if (state.view === 'detail' && state.drugId) {
+      const drug = drugs.find(d => d.id === state.drugId);
+      if (drug) { openDrugDetail(drug, false); }
+      else { showView('list', false); }
+    } else {
+      showView(state.view || 'list', false);
+    }
+  });
+
   loadDrugs();
   syncAuthUI();
   initMfdsKey(); // Supabase에서 식약처 API 키 자동 로드
@@ -808,10 +824,14 @@ window.addEventListener('DOMContentLoaded', () => {
 /* ══════════════════════════════════════
    뷰 전환
 ══════════════════════════════════════ */
-function showView(name) {
+function showView(name, pushState = true) {
   document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
   document.getElementById('view-' + name).classList.add('active');
   window.scrollTo(0, 0);
+  if (pushState) {
+    const state = { view: name, drugId: name === 'detail' && currentDrug ? currentDrug.id : null };
+    history.pushState(state, '', location.pathname + (name === 'detail' && currentDrug ? '?drug=' + currentDrug.id : ''));
+  }
   if (name === 'settings') { loadSettingsDrugList(); loadMfdsKeyInput(); }
 }
 
@@ -999,7 +1019,7 @@ function toggleVersion(el) {
 /* ══════════════════════════════════════
    약품 상세 열기
 ══════════════════════════════════════ */
-function openDrugDetail(d) {
+function openDrugDetail(d, pushState = true) {
   currentDrug = d;
 
   // 헤더 채우기
@@ -1027,7 +1047,7 @@ function openDrugDetail(d) {
   if (isAdminMode) delBtn.classList.remove('hidden');
   else delBtn.classList.add('hidden');
 
-  showView('detail');
+  showView('detail', pushState);
   loadVersions(d.id);
 }
 
@@ -1041,9 +1061,11 @@ const KIOSK_URLS = {
 };
 
 async function downloadVersion(versionId) {
-  const versionsData = await sb.from('drug_versions').select('*').eq('id', versionId).single();
-  if (versionsData.error || !versionsData.data) { showToast('❌ 버전 데이터 오류'); return; }
-  const v = versionsData.data;
+  // Worker 경유 (브라우저 확장 프로그램 차단 우회)
+  const res = await fetch(WORKER_URL + '/?action=boardGetVersion&versionId=' + encodeURIComponent(versionId));
+  if (!res.ok) { showToast('❌ 버전 로드 실패'); return; }
+  const v = await res.json();
+  if (v.error) { showToast('❌ ' + v.error); return; }
 
   const exportData = {
     source: '약품공유게시판',
@@ -1341,8 +1363,11 @@ async function deleteDrugById(drugId, drugName) {
 }
 
 async function copyVersionToNew(versionId) {
-  const { data, error } = await sb.from('drug_versions').select('*').eq('id', versionId).single();
-  if (error || !data) { showToast('버전 데이터를 불러올 수 없습니다.'); return; }
+  // Worker 경유 (브라우저 확장 프로그램 차단 우회)
+  const res = await fetch(WORKER_URL + '/?action=boardGetVersion&versionId=' + encodeURIComponent(versionId));
+  if (!res.ok) { showToast('버전 데이터를 불러올 수 없습니다.'); return; }
+  const data = await res.json();
+  if (data.error) { showToast('오류: ' + data.error); return; }
   openVersionUpload({ efficacy: data.efficacy, dosage: data.dosage, pharmacist_note: data.pharmacist_note, image_url: data.image_url });
   document.getElementById('vm-version-id').value = '';
 }
