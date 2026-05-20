@@ -1061,37 +1061,48 @@ const KIOSK_URLS = {
 };
 
 async function downloadVersion(versionId) {
-  // Worker 경유 (브라우저 확장 프로그램 차단 우회)
-  const res = await fetch(WORKER_URL + '/?action=boardGetVersion&versionId=' + encodeURIComponent(versionId));
-  if (!res.ok) { showToast('❌ 버전 로드 실패'); return; }
-  const v = await res.json();
-  if (v.error) { showToast('❌ ' + v.error); return; }
+  showToast('⏳ 버전 정보를 불러오는 중...');
+  try {
+    // Worker 경유 (브라우저 확장 프로그램 차단 우회)
+    const res = await fetch(WORKER_URL + '/?action=boardGetVersion&versionId=' + encodeURIComponent(versionId));
+    if (!res.ok) { showToast('❌ 버전 로드 실패 (' + res.status + ')'); return; }
+    const v = await res.json();
+    if (v.error) { showToast('❌ ' + v.error); return; }
 
-  const exportData = {
-    source: '약품공유게시판',
-    version: 2,
-    drug: {
-      name:           currentDrug?.canonical_name || '',
-      emoji:          currentDrug?.emoji || '💊',
-      cat:            currentDrug?.category || '기타',
-      tagline:        (v.efficacy || '').slice(0, 60),
-      info:           v.dosage || '',
-      pharmacistNote: v.pharmacist_note || '',
-      imageUrl:       v.image_url || '',
-      price:          0,
-      list:           0,
+    const exportData = {
+      source: '약품공유게시판',
+      version: 2,
+      drug: {
+        name:           currentDrug?.canonical_name || '',
+        emoji:          currentDrug?.emoji || '💊',
+        cat:            currentDrug?.category || '기타',
+        tagline:        (v.efficacy || '').slice(0, 60),
+        info:           v.dosage || '',
+        pharmacistNote: v.pharmacist_note || '',
+        imageUrl:       v.image_url || '',
+        price:          0,
+        list:           0,
+      }
+    };
+
+    // 키오스크 선택 팝업 표시 (다운로드 카운트보다 먼저)
+    showKioskSelector(exportData);
+
+    // 다운로드 카운트 증가 (fire-and-forget, sb null 가드)
+    if (sb) {
+      sb.rpc('increment_version_downloads', { p_version_id: versionId }).catch(async () => {
+        try {
+          const { data: cur } = await sb.from('drug_versions').select('downloads_count').eq('id', versionId).single();
+          await sb.from('drug_versions').update({ downloads_count: (cur?.downloads_count||0)+1 }).eq('id', versionId);
+        } catch(_) {}
+      });
     }
-  };
 
-  // 다운로드 카운트 증가 (fire-and-forget)
-  sb.rpc('increment_version_downloads', { p_version_id: versionId }).catch(async () => {
-    const { data: cur } = await sb.from('drug_versions').select('downloads_count').eq('id', versionId).single();
-    await sb.from('drug_versions').update({ downloads_count: (cur?.downloads_count||0)+1 }).eq('id', versionId);
-  });
-
-  // 키오스크 선택 팝업 표시
-  showKioskSelector(exportData);
-  if (currentDrug) setTimeout(() => loadVersions(currentDrug.id), 1000);
+    if (currentDrug) setTimeout(() => loadVersions(currentDrug.id), 1500);
+  } catch(e) {
+    console.error('[downloadVersion]', e);
+    showToast('❌ 오류: ' + e.message);
+  }
 }
 
 function showKioskSelector(exportData) {
@@ -1368,13 +1379,19 @@ async function deleteDrugById(drugId, drugName) {
 }
 
 async function copyVersionToNew(versionId) {
-  // Worker 경유 (브라우저 확장 프로그램 차단 우회)
-  const res = await fetch(WORKER_URL + '/?action=boardGetVersion&versionId=' + encodeURIComponent(versionId));
-  if (!res.ok) { showToast('버전 데이터를 불러올 수 없습니다.'); return; }
-  const data = await res.json();
-  if (data.error) { showToast('오류: ' + data.error); return; }
-  openVersionUpload({ efficacy: data.efficacy, dosage: data.dosage, pharmacist_note: data.pharmacist_note, image_url: data.image_url });
-  document.getElementById('vm-version-id').value = '';
+  showToast('⏳ 버전 정보를 불러오는 중...');
+  try {
+    // Worker 경유 (브라우저 확장 프로그램 차단 우회)
+    const res = await fetch(WORKER_URL + '/?action=boardGetVersion&versionId=' + encodeURIComponent(versionId));
+    if (!res.ok) { showToast('❌ 버전 데이터를 불러올 수 없습니다 (' + res.status + ')'); return; }
+    const data = await res.json();
+    if (data.error) { showToast('❌ 오류: ' + data.error); return; }
+    openVersionUpload({ efficacy: data.efficacy, dosage: data.dosage, pharmacist_note: data.pharmacist_note, image_url: data.image_url });
+    document.getElementById('vm-version-id').value = '';
+  } catch(e) {
+    console.error('[copyVersionToNew]', e);
+    showToast('❌ 오류: ' + e.message);
+  }
 }
 
 function handleFileUpload(idx, event) {
