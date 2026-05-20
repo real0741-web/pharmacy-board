@@ -1020,8 +1020,10 @@ function openDrugDetail(d) {
   if (currentUser) addBtn.classList.remove('hidden');
   else addBtn.classList.add('hidden');
 
-  // 관리자 삭제 버튼
+  // 관리자 삭제 버튼 (상태 항상 초기화)
   const delBtn = document.getElementById('delete-drug-btn');
+  delBtn.disabled = false;
+  delBtn.textContent = '🗑 삭제';
   if (isAdminMode) delBtn.classList.remove('hidden');
   else delBtn.classList.add('hidden');
 
@@ -1322,13 +1324,18 @@ async function deleteDrugById(drugId, drugName) {
       body: JSON.stringify({ drugId }),
       signal: AbortSignal.timeout(15000),
     });
-    const data = await res.json();
-    if (!data.ok) throw new Error(data.error || '삭제 실패');
+    const text = await res.text();
+    console.log('[deleteDrug] status:', res.status, 'body:', text);
+    let data;
+    try { data = JSON.parse(text); } catch(_) { throw new Error('응답 파싱 실패: ' + text.slice(0,100)); }
+    if (!data.ok) throw new Error(data.error || '삭제 실패 (status ' + res.status + ')');
     showToast('🗑 ' + drugName + ' 삭제 완료');
+    if (delBtn) { delBtn.disabled = false; delBtn.textContent = '🗑 삭제'; }
     showView('list');
     await loadDrugs();
   } catch(e) {
-    showToast('❌ 삭제 실패: ' + e.message);
+    console.error('[deleteDrug] error:', e);
+    showToast('❌ ' + e.message);
     if (delBtn) { delBtn.disabled = false; delBtn.textContent = '🗑 삭제'; }
   }
 }
