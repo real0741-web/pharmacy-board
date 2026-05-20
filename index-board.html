@@ -1664,10 +1664,12 @@ function updateHeaderAuth() {
   const uploadBtn  = document.getElementById('upload-btn');
   const noticebar  = document.getElementById('admin-notice-bar');
   const noticeMsg  = document.getElementById('admin-notice-msg');
+  const crawlBtn = document.getElementById('crawl-btn');
   if (isAdminMode) {
     if (adminBadge) adminBadge.classList.remove('hidden');
     if (aiBtn)      aiBtn.classList.remove('hidden');
     if (uploadBtn)  uploadBtn.classList.remove('hidden');
+    if (crawlBtn)   crawlBtn.classList.remove('hidden');
     if (el) el.innerHTML = '<button onclick="showView(\'settings\')" class="flex items-center gap-1 text-xs font-bold bg-yellow-400 text-yellow-900 px-3 py-1.5 rounded-xl hover:bg-yellow-300 transition-all" style="border:none;cursor:pointer;">⚙️ 설정</button>';
     // 식약처 API 키 미등록 여부 확인
     if (noticebar && noticeMsg) {
@@ -1685,6 +1687,7 @@ function updateHeaderAuth() {
     if (adminBadge) adminBadge.classList.add('hidden');
     if (aiBtn)      aiBtn.classList.add('hidden');
     if (uploadBtn)  uploadBtn.classList.add('hidden');
+    if (crawlBtn)   crawlBtn.classList.add('hidden');
     if (el)         el.innerHTML = '';
     if (noticebar)  noticebar.classList.add('hidden');
   }
@@ -2525,6 +2528,212 @@ async function initMfdsKey() {
     }
   } catch(e) {}
 }
+/* ══════════════════════════════════════
+   제약사 홈페이지 크롤링
+══════════════════════════════════════ */
+let _crawledDrugs = [];
+
+function openCrawlModal() {
+  document.getElementById('crawl-modal').classList.remove('hidden');
+  document.getElementById('crawl-results').classList.add('hidden');
+  document.getElementById('crawl-error').classList.add('hidden');
+  document.getElementById('crawl-status-box').classList.add('hidden');
+  document.getElementById('crawl-url').focus();
+}
+function closeCrawlModal() {
+  document.getElementById('crawl-modal').classList.add('hidden');
+  _crawledDrugs = [];
+}
+function setCrawlUrl(url) {
+  document.getElementById('crawl-url').value = url;
+  document.getElementById('crawl-url').focus();
+}
+
+async function startCrawl() {
+  const url = (document.getElementById('crawl-url').value || '').trim();
+  if (!url) { showToast('URL을 입력해주세요'); return; }
+  if (!url.startsWith('http')) { showToast('http:// 또는 https://로 시작하는 URL을 입력해주세요'); return; }
+
+  const startBtn  = document.getElementById('crawl-start-btn');
+  const statusBox = document.getElementById('crawl-status-box');
+  const statusMsg = document.getElementById('crawl-status-msg');
+  const errEl     = document.getElementById('crawl-error');
+  const resultsEl = document.getElementById('crawl-results');
+
+  startBtn.disabled = true;
+  startBtn.textContent = '⏳ 분석 중...';
+  statusBox.classList.remove('hidden');
+  statusMsg.textContent = '🌐 페이지를 불러오는 중... (최대 20초)';
+  errEl.classList.add('hidden');
+  resultsEl.classList.add('hidden');
+  _crawledDrugs = [];
+
+  try {
+    statusMsg.textContent = '🤖 AI가 약품 정보를 추출하는 중...';
+    const res = await fetch(WORKER_URL + '/?action=boardCrawlPage', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ url }),
+      signal: AbortSignal.timeout(30000),
+    });
+    const data = await res.json();
+    if (data.error) throw new Error(data.error);
+
+    _crawledDrugs = data.drugs || [];
+    statusBox.classList.add('hidden');
+
+    if (_crawledDrugs.length === 0) {
+      errEl.textContent = '약품 정보를 찾지 못했습니다. 제품 목록이나 상세 페이지 URL을 직접 입력해보세요.';
+      errEl.classList.remove('hidden');
+      return;
+    }
+
+    // 결과 렌더링
+    document.getElementById('crawl-page-title').textContent = data.pageTitle ? '📄 ' + data.pageTitle : '📄 ' + url;
+    document.getElementById('crawl-result-count').textContent =
+      _crawledDrugs.length + '개 약품 발견 · 이미지 ' + (data.imageCount || 0) + '개 · 텍스트 ' + ((data.textLength||0)/1000).toFixed(1) + 'KB 분석됨';
+
+    renderCrawledDrugs(_crawledDrugs);
+    resultsEl.classList.remove('hidden');
+    document.getElementById('crawl-log').classList.add('hidden');
+    document.getElementById('crawl-progress-bar').classList.add('hidden');
+    document.getElementById('crawl-register-btn').disabled = false;
+    document.getElementById('crawl-register-btn').textContent = '✅ 선택한 약품 게시판에 등록';
+
+  } catch(e) {
+    statusBox.classList.add('hidden');
+    errEl.textContent = '❌ ' + e.message;
+    errEl.classList.remove('hidden');
+    console.error('[startCrawl]', e);
+  } finally {
+    startBtn.disabled = false;
+    startBtn.textContent = '🔍 분석';
+  }
+}
+
+function renderCrawledDrugs(drugs) {
+  const listEl = document.getElementById('crawl-drug-list');
+  listEl.innerHTML = '';
+  drugs.forEach(function(d, idx) {
+    const card = document.createElement('label');
+    card.className = 'flex items-start gap-3 p-3 rounded-xl border border-slate-200 bg-white hover:border-purple-300 hover:bg-purple-50 cursor-pointer transition-colors';
+    card.style.display = 'flex';
+
+    const cb = document.createElement('input');
+    cb.type = 'checkbox';
+    cb.checked = true;
+    cb.dataset.idx = idx;
+    cb.className = 'mt-0.5 shrink-0 w-4 h-4 accent-purple-600';
+
+    const imgHtml = d.imageUrl
+      ? '<img src="' + d.imageUrl + '" style="width:48px;height:48px;object-fit:contain;border-radius:8px;border:1px solid #e2e8f0;flex-shrink:0;" onerror="this.style.display=\'none\'"/>'
+      : '<div style="width:48px;height:48px;border-radius:8px;background:#f1f5f9;display:flex;align-items:center;justify-content:center;font-size:22px;flex-shrink:0;">💊</div>';
+
+    const info = document.createElement('div');
+    info.style.cssText = 'display:flex;align-items:start;gap:10px;flex:1;min-width:0;';
+    info.innerHTML = imgHtml +
+      '<div style="flex:1;min-width:0;">' +
+        '<div style="font-weight:700;font-size:13px;color:#1e293b;">' + (d.name || '이름없음') + '</div>' +
+        '<div style="font-size:11px;color:#64748b;margin:1px 0;">' + (d.manufacturer || '') + (d.category ? ' · ' + d.category : '') + '</div>' +
+        '<div style="font-size:11px;color:#94a3b8;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">' + (d.efficacy || '').slice(0, 60) + (d.efficacy?.length > 60 ? '...' : '') + '</div>' +
+      '</div>';
+
+    card.appendChild(cb);
+    card.appendChild(info);
+    listEl.appendChild(card);
+  });
+}
+
+function crawlSelectAll(select) {
+  document.querySelectorAll('#crawl-drug-list input[type="checkbox"]').forEach(cb => cb.checked = select);
+}
+
+async function startBulkRegister() {
+  const checked = [...document.querySelectorAll('#crawl-drug-list input[type="checkbox"]:checked')];
+  if (checked.length === 0) { showToast('등록할 약품을 선택해주세요'); return; }
+
+  const registerBtn = document.getElementById('crawl-register-btn');
+  const progressBar = document.getElementById('crawl-progress-bar');
+  const fill        = document.getElementById('crawl-progress-fill');
+  const pct         = document.getElementById('crawl-progress-pct');
+  const label       = document.getElementById('crawl-progress-label');
+  const logEl       = document.getElementById('crawl-log');
+
+  registerBtn.disabled = true;
+  progressBar.classList.remove('hidden');
+  logEl.classList.remove('hidden');
+  logEl.textContent = '';
+
+  const addLog = (msg, color) => {
+    const line = document.createElement('div');
+    line.textContent = msg;
+    if (color) line.style.color = color;
+    logEl.appendChild(line);
+    logEl.scrollTop = logEl.scrollHeight;
+  };
+
+  let done = 0;
+  let success = 0;
+  let fail = 0;
+  const total = checked.length;
+
+  for (const cb of checked) {
+    const drug = _crawledDrugs[parseInt(cb.dataset.idx)];
+    if (!drug) continue;
+
+    label.textContent = '[' + (done+1) + '/' + total + '] ' + drug.name + ' 등록 중...';
+    pct.textContent = Math.round((done / total) * 100) + '%';
+    fill.style.width = Math.round((done / total) * 100) + '%';
+
+    try {
+      const res = await fetch(WORKER_URL + '/?action=boardSave', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          drug: {
+            canonical_name:    drug.name,
+            emoji:             '💊',
+            category:          drug.category  || '기타',
+            manufacturer_name: drug.manufacturer || '기타',
+            func_tags:         [],
+          },
+          version: {
+            pharmacy_name:   '크롤링',
+            efficacy:        drug.efficacy   || '',
+            dosage:          drug.dosage     || '',
+            pharmacist_note: null,
+            image_url:       drug.imageUrl   || null,
+          },
+        }),
+        signal: AbortSignal.timeout(15000),
+      });
+      const result = await res.json();
+      if (!result.ok) throw new Error(result.error || '등록 실패');
+      addLog('✅ ' + drug.name, '#10b981');
+      success++;
+    } catch(e) {
+      addLog('❌ ' + drug.name + ': ' + e.message, '#ef4444');
+      fail++;
+    }
+
+    done++;
+    // 연속 요청 간 짧은 딜레이 (서버 부하 방지)
+    await new Promise(r => setTimeout(r, 400));
+  }
+
+  fill.style.width = '100%';
+  pct.textContent = '100%';
+  label.textContent = '완료!';
+  addLog('─────────────────────', '#94a3b8');
+  addLog('✅ 성공 ' + success + '개  ❌ 실패 ' + fail + '개', success > 0 ? '#10b981' : '#ef4444');
+
+  registerBtn.disabled = false;
+  registerBtn.textContent = '🔄 다시 등록하기';
+
+  showToast('🎉 ' + success + '개 등록 완료!' + (fail > 0 ? ' (' + fail + '개 실패)' : ''));
+  if (success > 0) setTimeout(() => loadDrugs(), 1000);
+}
+
 // ── 식약처 약품 검색 (Worker 경유) ──────────────────────────────────────
 async function searchBoardDrugByName() {
   const keyword = (document.getElementById('nd-search-input')?.value || '').trim();
