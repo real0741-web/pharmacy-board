@@ -1715,57 +1715,32 @@ async function regSubmit(continueMode) {
   if (btn) { btn.disabled = true; btn.textContent = '등록 중...'; }
   document.getElementById('reg-status').textContent = '⏳ Supabase에 저장 중...';
 
-  // 10초 타임아웃 래퍼
-  const withTimeout = (promise, ms, label) =>
-    Promise.race([
-      promise,
-      new Promise((_, rej) => setTimeout(() => rej(new Error(
-        label + ' 시간 초과 (5초) — RLS 정책 문제일 수 있습니다'
-      )), ms))
-    ]);
-
   try {
-    // 1) 제약사 처리
-    let mfrId = null;
-    if (mfr && mfr !== '기타') {
-      const { data: mfrData } = await withTimeout(
-        sb.from('manufacturers').select('id').eq('name', mfr).maybeSingle(), 5000, '제약사 조회');
-      if (!mfrData) {
-        const { data: newMfr } = await withTimeout(
-          sb.from('manufacturers').insert({ name: mfr }).select().single(), 5000, '제약사 등록');
-        mfrId = newMfr?.id || null;
-      } else {
-        mfrId = mfrData.id;
-      }
-    }
-
-    // 2) drugs 테이블에 INSERT
+    // Cloudflare Worker를 통해 저장 (브라우저 확장 프로그램 차단 우회)
     const tagArr = tagsRaw ? tagsRaw.split(',').map(t => t.trim()).filter(Boolean) : [];
-    const { data: drugRow, error: drugErr } = await withTimeout(
-      sb.from('drugs').insert({
-        canonical_name:    name,
-        emoji:             emoji,
-        category:          cat,
-        manufacturer_id:   mfrId,
-        manufacturer_name: (mfr && mfr !== '기타') ? mfr : '기타',
-        func_tags:         tagArr,
-      }).select().single(), 15000, 'drugs INSERT');
-
-    if (drugErr) throw new Error('drugs 저장 실패: ' + (drugErr.message || drugErr.code || JSON.stringify(drugErr)));
-
-    // 3) drug_versions 테이블에 INSERT
-    const { error: verErr } = await withTimeout(
-      sb.from('drug_versions').insert({
-        drug_id:          drugRow.id,
-        user_id:          null,
-        pharmacy_name:    '관리자',
-        efficacy:         efficacy || '효능 정보 없음',
-        dosage:           dosage   || '제품 동봉 설명서 참조',
-        pharmacist_note:  note     || null,
-        image_url:        imgUrl   || null,
-      }), 15000, 'drug_versions INSERT');
-
-    if (verErr) throw new Error('버전 저장 실패: ' + (verErr.message || verErr.code || JSON.stringify(verErr)));
+    const saveRes = await fetch(WORKER_URL + '/?action=boardSave', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        drug: {
+          canonical_name:    name,
+          emoji:             emoji,
+          category:          cat,
+          manufacturer_name: (mfr && mfr !== '기타') ? mfr : '기타',
+          func_tags:         tagArr,
+        },
+        version: {
+          pharmacy_name:   '관리자',
+          efficacy:        efficacy || '효능 정보 없음',
+          dosage:          dosage   || '제품 동봉 설명서 참조',
+          pharmacist_note: note     || null,
+          image_url:       imgUrl   || null,
+        },
+      }),
+      signal: AbortSignal.timeout(20000),
+    });
+    const saveData = await saveRes.json();
+    if (!saveData.ok) throw new Error(saveData.error || '저장 실패');
 
     showToast('🎉 ' + name + ' 등록 완료!');
     await loadDrugs();
