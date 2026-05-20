@@ -182,6 +182,8 @@
         <div class="flex-1"></div>
         <button onclick="openVersionUpload()" id="add-version-btn"
           class="hidden btn-primary px-4 py-2 text-sm">+ 내 버전 등록</button>
+        <button onclick="confirmDeleteDrug()" id="delete-drug-btn"
+          class="hidden btn-secondary px-3 py-2 text-sm text-red-500 hover:bg-red-50 border border-red-200">🗑 삭제</button>
       </div>
     </div>
 
@@ -1018,6 +1020,11 @@ function openDrugDetail(d) {
   if (currentUser) addBtn.classList.remove('hidden');
   else addBtn.classList.add('hidden');
 
+  // 관리자 삭제 버튼
+  const delBtn = document.getElementById('delete-drug-btn');
+  if (isAdminMode) delBtn.classList.remove('hidden');
+  else delBtn.classList.add('hidden');
+
   showView('detail');
   loadVersions(d.id);
 }
@@ -1295,6 +1302,35 @@ async function deleteVersion(versionId) {
   if (error) { showToast('삭제 실패: ' + error.message); return; }
   showToast('버전이 삭제되었습니다.');
   if (currentDrug) loadVersions(currentDrug.id);
+}
+
+/* ── 약품 전체 삭제 (관리자 전용) ─────────────────────── */
+function confirmDeleteDrug() {
+  if (!currentDrug) return;
+  const name = currentDrug.canonical_name;
+  if (!confirm(`"${name}" 약품을 삭제하시겠습니까?\n\n버전 데이터도 모두 삭제됩니다.`)) return;
+  deleteDrugById(currentDrug.id, name);
+}
+
+async function deleteDrugById(drugId, drugName) {
+  const delBtn = document.getElementById('delete-drug-btn');
+  if (delBtn) { delBtn.disabled = true; delBtn.textContent = '삭제 중...'; }
+  try {
+    const res = await fetch(WORKER_URL + '/?action=boardDeleteDrug', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ drugId }),
+      signal: AbortSignal.timeout(15000),
+    });
+    const data = await res.json();
+    if (!data.ok) throw new Error(data.error || '삭제 실패');
+    showToast('🗑 ' + drugName + ' 삭제 완료');
+    showView('list');
+    await loadDrugs();
+  } catch(e) {
+    showToast('❌ 삭제 실패: ' + e.message);
+    if (delBtn) { delBtn.disabled = false; delBtn.textContent = '🗑 삭제'; }
+  }
 }
 
 async function copyVersionToNew(versionId) {
