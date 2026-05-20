@@ -116,6 +116,19 @@
       <button class="chip" data-mfr="광동제약"  onclick="setMfrFilter('광동제약',this)">광동제약</button>
       <button class="chip" data-mfr="기타"      onclick="setMfrFilter('기타',this)">기타</button>
     </div>
+    <!-- 관리자 전용: 제약사별 크롤링 바 -->
+    <div id="mfr-crawl-bar" class="hidden pt-1 pb-0.5">
+      <div class="flex items-center gap-2 overflow-x-auto no-scrollbar">
+        <span class="text-xs text-purple-500 font-bold shrink-0 flex items-center gap-1">
+          🌐 제품 가져오기
+        </span>
+        <div id="mfr-crawl-chips" class="flex gap-1.5"></div>
+        <button onclick="openCrawlModal()" title="직접 URL 입력"
+          class="shrink-0 text-xs px-2.5 py-1 rounded-full border border-dashed border-purple-300 text-purple-400 hover:bg-purple-50 transition-all font-semibold">
+          + URL 직접입력
+        </button>
+      </div>
+    </div>
   </div>
 
   <!-- 기능 태그 필터 -->
@@ -202,6 +215,80 @@
         <button onclick="openVersionUpload()" class="btn-primary px-5 py-2 text-sm">✏️ 첫 버전 등록하기</button>
         <button onclick="downloadDrugBase()" class="btn-secondary px-5 py-2 text-sm">📥 약품 기본정보로 키오스크에 가져오기</button>
       </div>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════
+     VIEW: 설정
+══════════════════════════════════════ -->
+<div id="view-settings" class="view">
+  <div class="max-w-2xl mx-auto px-4 pt-4 pb-24">
+    <div class="flex items-center gap-3 mb-5">
+      <button onclick="showView('list')" class="text-slate-400 hover:text-slate-600 text-sm flex items-center gap-1">← 게시판으로</button>
+      <h1 class="text-xl font-extrabold text-slate-800">⚙️ 관리자 설정</h1>
+    </div>
+
+    <!-- 식약처 API 키 -->
+    <div class="bg-white rounded-2xl border border-slate-100 shadow-sm p-5 mb-4">
+      <h2 class="font-extrabold text-slate-700 mb-1 flex items-center gap-2">🔍 식약처 공공데이터 API 키</h2>
+      <p class="text-xs text-slate-400 mb-3">약품 검색·크롤링 AI 품질 향상에 필요합니다.
+        <a href="https://www.data.go.kr/iim/api/selectAPIAcountView.do" target="_blank" class="text-teal-600 underline">공공데이터포털</a>에서 무료 발급.</p>
+      <div class="flex gap-2">
+        <input id="mfds-api-key" type="text" placeholder="발급받은 인증키 붙여넣기"
+          class="flex-1 border border-slate-200 rounded-xl px-3 py-2 text-xs focus:outline-none focus:border-teal-500"/>
+        <button onclick="saveMfdsKey()" class="btn-primary px-4 py-2 text-sm shrink-0">저장</button>
+      </div>
+    </div>
+
+    <!-- 키오스크 URL -->
+    <div class="bg-white rounded-2xl border border-slate-100 shadow-sm p-5 mb-4">
+      <h2 class="font-extrabold text-slate-700 mb-1 flex items-center gap-2">🏪 키오스크 URL 설정</h2>
+      <p class="text-xs text-slate-400 mb-3">"키오스크에 가져오기" 버튼이 열 URL을 설정합니다.</p>
+      <div class="space-y-2">
+        <div>
+          <label class="text-xs font-bold text-slate-500 mb-1 block">1호점</label>
+          <input id="kiosk-url-shop1" type="url" placeholder="https://real0741-web.github.io/local-pharmacy/"
+            class="w-full border border-slate-200 rounded-xl px-3 py-2 text-xs focus:outline-none focus:border-teal-500"/>
+        </div>
+        <div>
+          <label class="text-xs font-bold text-slate-500 mb-1 block">2호점</label>
+          <input id="kiosk-url-shop2" type="url" placeholder="https://... (2호점 URL)"
+            class="w-full border border-slate-200 rounded-xl px-3 py-2 text-xs focus:outline-none focus:border-teal-500"/>
+        </div>
+        <button onclick="saveKioskUrls()" class="btn-primary px-4 py-2 text-sm">저장</button>
+      </div>
+    </div>
+
+    <!-- 제약사별 크롤링 URL -->
+    <div class="bg-white rounded-2xl border border-slate-100 shadow-sm p-5 mb-4">
+      <h2 class="font-extrabold text-slate-700 mb-1 flex items-center gap-2">🌐 제약사별 제품 페이지 URL</h2>
+      <p class="text-xs text-slate-400 mb-3">제약사 필터 칩의 "🌐 제품 가져오기" 버튼이 사용하는 URL입니다. 실제 제품 목록 페이지 주소로 수정하세요.</p>
+      <div id="mfr-url-editor" class="space-y-2"></div>
+      <button onclick="saveMfrUrls()" class="btn-primary px-4 py-2 text-sm mt-3">저장</button>
+      <button onclick="resetMfrUrls()" class="ml-2 px-4 py-2 text-sm rounded-xl border border-slate-200 text-slate-500 hover:bg-slate-50">기본값 복원</button>
+    </div>
+
+    <!-- 관리자 PIN 변경 -->
+    <div class="bg-white rounded-2xl border border-slate-100 shadow-sm p-5 mb-4">
+      <h2 class="font-extrabold text-slate-700 mb-3 flex items-center gap-2">🔑 관리자 PIN 변경</h2>
+      <div class="space-y-2 mb-3">
+        <input id="pw-change-cur" type="password" inputmode="numeric" maxlength="8" placeholder="현재 PIN"
+          class="w-full border border-slate-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-teal-500"/>
+        <input id="pw-change-new" type="password" inputmode="numeric" maxlength="8" placeholder="새 PIN"
+          class="w-full border border-slate-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-teal-500"/>
+        <input id="pw-change-confirm" type="password" inputmode="numeric" maxlength="8" placeholder="새 PIN 확인"
+          class="w-full border border-slate-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-teal-500"/>
+      </div>
+      <button onclick="saveAdminPassword()" class="btn-primary px-5 py-2.5 text-sm">PIN 변경</button>
+    </div>
+
+    <!-- 로그아웃 -->
+    <div class="text-center">
+      <button onclick="adminLogout()"
+        class="px-6 py-2.5 rounded-xl border border-red-200 text-red-500 text-sm font-bold hover:bg-red-50 transition-all">
+        🚪 관리자 로그아웃
+      </button>
     </div>
   </div>
 </div>
@@ -940,7 +1027,7 @@ function showView(name, pushState = true) {
     const state = { view: name, drugId: name === 'detail' && currentDrug ? currentDrug.id : null };
     history.pushState(state, '', location.pathname + (name === 'detail' && currentDrug ? '?drug=' + currentDrug.id : ''));
   }
-  if (name === 'settings') { loadSettingsDrugList(); loadMfdsKeyInput(); }
+  if (name === 'settings') { loadSettingsDrugList(); loadMfdsKeyInput(); renderMfrUrlEditor(); }
 }
 
 /* ══════════════════════════════════════
@@ -1670,6 +1757,7 @@ function updateHeaderAuth() {
     if (aiBtn)      aiBtn.classList.remove('hidden');
     if (uploadBtn)  uploadBtn.classList.remove('hidden');
     if (crawlBtn)   crawlBtn.classList.remove('hidden');
+    renderMfrCrawlBar();
     if (el) el.innerHTML = '<button onclick="showView(\'settings\')" class="flex items-center gap-1 text-xs font-bold bg-yellow-400 text-yellow-900 px-3 py-1.5 rounded-xl hover:bg-yellow-300 transition-all" style="border:none;cursor:pointer;">⚙️ 설정</button>';
     // 식약처 API 키 미등록 여부 확인
     if (noticebar && noticeMsg) {
@@ -1690,6 +1778,7 @@ function updateHeaderAuth() {
     if (crawlBtn)   crawlBtn.classList.add('hidden');
     if (el)         el.innerHTML = '';
     if (noticebar)  noticebar.classList.add('hidden');
+    renderMfrCrawlBar();
   }
 }
 
@@ -2529,6 +2618,106 @@ async function initMfdsKey() {
   } catch(e) {}
 }
 /* ══════════════════════════════════════
+   제약사 URL 설정 + 크롤링 바
+══════════════════════════════════════ */
+
+// 제약사별 기본 제품 페이지 URL (설정에서 수정 가능)
+const DEFAULT_MFR_URLS = {
+  '동아제약':  'https://www.dong-a.com/kr/product/list',
+  '한미약품':  'https://www.hanmi.co.kr/ko/product/list',
+  '종근당':    'https://www.ckdpharm.com/product',
+  '유한양행':  'https://www.yuhan.co.kr/Product/MedicineList',
+  '보령제약':  'https://www.boryung.co.kr/product/list',
+  '광동제약':  'https://www.kwangdong.co.kr/product/productList',
+  '대웅제약':  'https://www.daewoong.co.kr/kr/product/product01',
+  '일동제약':  'https://www.ildong.com/kr/product/list',
+  '한독':      'https://www.handok.com/kr/product/list',
+};
+
+function getMfrUrls() {
+  try {
+    const saved = JSON.parse(localStorage.getItem('_mfrCrawlUrls') || '{}');
+    return Object.assign({}, DEFAULT_MFR_URLS, saved);
+  } catch(_) { return { ...DEFAULT_MFR_URLS }; }
+}
+function saveMfrUrl(mfr, url) {
+  const saved = JSON.parse(localStorage.getItem('_mfrCrawlUrls') || '{}');
+  if (url) saved[mfr] = url;
+  else delete saved[mfr];
+  localStorage.setItem('_mfrCrawlUrls', JSON.stringify(saved));
+}
+
+/* ── 설정 페이지: 제약사 URL 에디터 ── */
+function renderMfrUrlEditor() {
+  const container = document.getElementById('mfr-url-editor');
+  if (!container) return;
+  const urls = getMfrUrls();
+  const allMfrs = Array.from(new Set([
+    ...Object.keys(DEFAULT_MFR_URLS),
+    ...Object.keys(JSON.parse(localStorage.getItem('_mfrCrawlUrls') || '{}')),
+  ]));
+  container.innerHTML = allMfrs.map(function(mfr) {
+    const val = urls[mfr] || '';
+    return '<div class="flex items-center gap-2">'
+      + '<span class="text-sm font-bold text-slate-600 w-20 shrink-0">' + mfr + '</span>'
+      + '<input id="mfr-url-' + mfr + '" type="text" value="' + val.replace(/"/g,'&quot;') + '" '
+      + 'placeholder="https://..." '
+      + 'class="flex-1 border border-slate-200 rounded-lg px-3 py-1.5 text-xs font-mono"/>'
+      + '</div>';
+  }).join('');
+}
+
+function saveMfrUrls() {
+  const container = document.getElementById('mfr-url-editor');
+  if (!container) return;
+  const overrides = {};
+  container.querySelectorAll('input[id^="mfr-url-"]').forEach(function(input) {
+    const mfr = input.id.replace('mfr-url-', '');
+    const url = input.value.trim();
+    if (url) overrides[mfr] = url;
+  });
+  localStorage.setItem('_mfrCrawlUrls', JSON.stringify(overrides));
+  renderMfrCrawlBar();
+  showToast('✅ 제약사 URL 저장됨!');
+}
+
+function resetMfrUrls() {
+  if (!confirm('기본값으로 복원하시겠습니까? 수정 내역이 초기화됩니다.')) return;
+  localStorage.removeItem('_mfrCrawlUrls');
+  renderMfrUrlEditor();
+  renderMfrCrawlBar();
+  showToast('✅ 기본값으로 복원됨!');
+}
+
+function renderMfrCrawlBar() {
+  const bar   = document.getElementById('mfr-crawl-bar');
+  const chips = document.getElementById('mfr-crawl-chips');
+  if (!bar || !chips) return;
+
+  if (!isAdminMode) { bar.classList.add('hidden'); return; }
+  bar.classList.remove('hidden');
+
+  const urls = getMfrUrls();
+  chips.innerHTML = '';
+  Object.entries(urls).forEach(function([mfr, url]) {
+    const btn = document.createElement('button');
+    btn.className = 'shrink-0 text-xs px-3 py-1 rounded-full bg-purple-50 border border-purple-200 text-purple-700 font-bold hover:bg-purple-100 transition-all flex items-center gap-1';
+    btn.innerHTML = '🌐 ' + mfr;
+    btn.title = url;
+    btn.onclick = function() { openCrawlModalWithUrl(url, mfr); };
+    chips.appendChild(btn);
+  });
+}
+
+function openCrawlModalWithUrl(url, mfrName) {
+  openCrawlModal();
+  document.getElementById('crawl-url').value = url;
+  if (mfrName) {
+    document.getElementById('crawl-start-btn').textContent = '🔍 ' + mfrName + ' 분석';
+  }
+}
+
+/* ══════════════════════════════════════
    제약사 홈페이지 크롤링
 ══════════════════════════════════════ */
 let _crawledDrugs = [];
@@ -2924,5 +3113,5 @@ async function aiSummarizeNote() {
 
 </script>
 
-
-<!-- ═════════════
+</body>
+</html>
