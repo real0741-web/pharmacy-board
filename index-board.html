@@ -7,12 +7,20 @@
 <script src="https://cdn.tailwindcss.com"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
 <style>
-  html,body{font-family:-apple-system,BlinkMacSystemFont,'Apple SD Gothic Neo','Malgun Gothic','Segoe UI',sans-serif;}
+  html,body{font-family:-apple-system,BlinkMacSystemFont,'Apple SD Gothic Neo','Malgun Gothic','Segoe UI',sans-serif;word-break:keep-all;overflow-wrap:break-word;}
   :root{--brand:#0d9488;--brand-dark:#0f766e;--brand-soft:#ccfbf1;}
   .no-scrollbar::-webkit-scrollbar{display:none}.no-scrollbar{-ms-overflow-style:none;scrollbar-width:none}
   @keyframes fade{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:translateY(0)}}
   .fade-in{animation:fade .2s ease-out;}
   .modal-bg{background:rgba(15,23,42,.55);backdrop-filter:blur(4px);}
+  /* 모바일 line-clamp 폴리필 */
+  .line-clamp-2{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;}
+  .line-clamp-3{display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden;}
+  /* 모바일 카드 텍스트 최소 사이즈 */
+  @media(max-width:640px){
+    .card .font-bold{font-size:0.8rem;}
+    .card .text-xs{font-size:0.7rem;}
+  }
   input:focus,textarea:focus,select:focus{outline:none;border-color:var(--brand)!important;box-shadow:0 0 0 3px var(--brand-soft);}
   .btn-primary{background:var(--brand);color:white;font-weight:700;border-radius:10px;transition:opacity .15s;border:none;cursor:pointer;}
   .btn-primary:hover{opacity:.88;}
@@ -371,11 +379,15 @@
       <div class="flex gap-1 mb-0">
         <button id="crawl-tab-url" onclick="setCrawlTab('url')"
           class="flex-1 py-2 text-sm font-bold rounded-t-xl border-2 border-b-0 border-purple-500 bg-purple-600 text-white transition-all">
-          🌐 URL 크롤링
+          🌐 URL
         </button>
         <button id="crawl-tab-screenshot" onclick="setCrawlTab('screenshot')"
           class="flex-1 py-2 text-sm font-bold rounded-t-xl border-2 border-b-0 border-slate-200 bg-slate-50 text-slate-500 transition-all">
           📷 스크린샷
+        </button>
+        <button id="crawl-tab-text" onclick="setCrawlTab('text')"
+          class="flex-1 py-2 text-sm font-bold rounded-t-xl border-2 border-b-0 border-slate-200 bg-slate-50 text-slate-500 transition-all">
+          📋 텍스트
         </button>
       </div>
     </div>
@@ -464,6 +476,36 @@
         </div>
         <div class="bg-amber-50 rounded-xl px-4 py-2.5 text-xs text-amber-700">
           ⚡ Claude Vision 사용 · CLAUDE_API_KEY 환경변수 필요
+        </div>
+      </div>
+
+      <!-- ▼ 텍스트 붙여넣기 탭 패널 -->
+      <div id="crawl-panel-text" class="hidden space-y-3">
+        <p class="text-xs text-slate-500 leading-relaxed">
+          사이트에서 <strong>제품 목록 텍스트를 Ctrl+A → Ctrl+C</strong>로 복사한 뒤 아래에 붙여넣으세요.<br/>
+          JS 렌더링, 봇 차단, 모바일 전용 사이트도 OK — 가장 확실한 방법이에요.
+        </p>
+        <div class="bg-teal-50 rounded-xl px-4 py-2.5 text-xs text-teal-700 leading-relaxed">
+          💡 <strong>앨리스랩 같은 차단 사이트:</strong> 브라우저에서 사이트 열기 → Ctrl+A(전체선택) → Ctrl+C(복사) → 아래 붙여넣기
+        </div>
+        <div class="flex gap-2">
+          <input id="crawl-text-url" type="url" placeholder="출처 URL (선택 · 더 정확한 분석)"
+            class="flex-1 border border-slate-200 rounded-xl px-3 py-2 text-xs focus:border-teal-400 focus:outline-none"/>
+        </div>
+        <textarea id="crawl-paste-text" rows="8"
+          placeholder="여기에 텍스트를 붙여넣으세요 (Ctrl+V)&#10;&#10;예시:&#10;루테인플러스 20mg - 눈 건강 영양제&#10;오메가3 알티지 1000mg&#10;마그네슘 비스글리시네이트 ..."
+          class="w-full border-2 border-slate-200 rounded-2xl px-4 py-3 text-sm focus:border-teal-400 focus:outline-none resize-none font-mono"
+          oninput="document.getElementById('crawl-text-charcount').textContent = this.value.length + '자'"></textarea>
+        <div class="flex items-center justify-between">
+          <span id="crawl-text-charcount" class="text-xs text-slate-400">0자</span>
+          <div class="flex gap-2">
+            <button onclick="document.getElementById('crawl-paste-text').value='';document.getElementById('crawl-text-charcount').textContent='0자'"
+              class="text-xs text-slate-400 hover:text-slate-600 px-3 py-1.5 rounded-lg border border-slate-200">지우기</button>
+            <button onclick="startTextAnalyze()" id="crawl-text-analyze-btn"
+              class="bg-teal-600 text-white font-bold px-5 py-2 rounded-xl text-sm hover:bg-teal-700 active:scale-95 transition-all">
+              🤖 AI 분석
+            </button>
+          </div>
         </div>
       </div>
 
@@ -3207,6 +3249,63 @@ function handleScreenshotDrop(e) {
   if (file) handleScreenshotFile(file);
 }
 
+
+async function startTextAnalyze() {
+  const text = (document.getElementById('crawl-paste-text')?.value || '').trim();
+  if (!text) { showToast('텍스트를 먼저 붙여넣어 주세요'); return; }
+
+  const sourceUrl = (document.getElementById('crawl-text-url')?.value || '').trim();
+  const btn       = document.getElementById('crawl-text-analyze-btn');
+  const statusBox = document.getElementById('crawl-status-box');
+  const statusMsg = document.getElementById('crawl-status-msg');
+  const errEl     = document.getElementById('crawl-error');
+  const resultsEl = document.getElementById('crawl-results');
+
+  btn.disabled = true; btn.textContent = '⏳ 분석 중...';
+  statusBox.classList.remove('hidden');
+  statusMsg.textContent = '🤖 AI가 텍스트에서 제품을 추출 중...';
+  errEl.classList.add('hidden');
+  resultsEl.classList.add('hidden');
+  _crawledDrugs = [];
+
+  try {
+    const res = await fetch(WORKER_URL + '/?action=boardParseText', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ text, sourceUrl }),
+      signal: AbortSignal.timeout(25000),
+    });
+    const data = await res.json();
+    if (data.error) throw new Error(data.error);
+
+    _crawledDrugs = data.drugs || [];
+    statusBox.classList.add('hidden');
+
+    if (_crawledDrugs.length === 0) {
+      errEl.textContent = '제품 정보를 찾지 못했습니다. 제품명이 포함된 텍스트를 붙여넣어 주세요.';
+      errEl.classList.remove('hidden'); return;
+    }
+
+    document.getElementById('crawl-page-title').textContent = '📋 ' + (data.pageTitle || '텍스트 분석 결과');
+    document.getElementById('crawl-result-count').textContent =
+      _crawledDrugs.length + '개 제품 발견 · 텍스트 ' + ((data.textLength || 0) / 1000).toFixed(1) + 'KB';
+    renderCrawledDrugs(_crawledDrugs);
+    resultsEl.classList.remove('hidden');
+    document.getElementById('crawl-log').classList.add('hidden');
+    document.getElementById('crawl-progress-bar').classList.add('hidden');
+    document.getElementById('crawl-register-btn').disabled = false;
+    document.getElementById('crawl-register-btn').textContent = '✅ 선택한 약품 게시판에 등록';
+
+  } catch(e) {
+    statusBox.classList.add('hidden');
+    errEl.textContent = '❌ ' + e.message;
+    errEl.classList.remove('hidden');
+    console.error('[startTextAnalyze]', e);
+  } finally {
+    btn.disabled = false; btn.textContent = '🤖 AI 분석';
+  }
+}
+
 async function startScreenshotAnalyze() {
   if (!_screenshotBase64) { showToast('스크린샷을 먼저 붙여넣거나 선택해주세요'); return; }
 
@@ -3754,7 +3853,6 @@ async function aiSummarizeNote() {
     const result = await res.json();
     if (!res.ok || result.error) throw new Error(result.error || 'AI 자동완성 실패');
 
-    // 항상 덮어쓰기 — confirm 없이 바로 적용
     let filled = [];
     const badgesEl2 = document.getElementById('vm-badges');
     if (effEl    && result.efficacy)        { effEl.value    = result.efficacy;        filled.push('한 줄 설명'); }
@@ -3776,7 +3874,6 @@ async function aiSummarizeNote() {
   }
 }
 
-// 배지 프리셋 클릭 — 콤마 구분으로 추가
 function addBadgePreset(badge) {
   const el = document.getElementById('vm-badges');
   if (!el) return;
