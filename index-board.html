@@ -3465,14 +3465,18 @@ function renderCrawledDrugs(drugs) {
 
     const info = document.createElement('div');
     info.style.cssText = 'display:flex;align-items:start;gap:10px;flex:1;min-width:0;';
+    const taglinePreview = d.tagline
+      ? '<div style="font-size:11px;color:#7c3aed;margin-top:2px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + d.tagline + '</div>'
+      : '';
     const notePreview = d.pharmacist_note
-      ? '<div style="font-size:10px;color:#0d9488;margin-top:2px;font-style:italic;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">💬 ' + d.pharmacist_note.slice(0, 50) + (d.pharmacist_note.length > 50 ? '...' : '') + '</div>'
+      ? '<div style="font-size:10px;color:#0d9488;margin-top:2px;font-style:italic;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">💬 ' + d.pharmacist_note.slice(0, 60) + (d.pharmacist_note.length > 60 ? '...' : '') + '</div>'
       : '';
     info.innerHTML = imgHtml +
       '<div style="flex:1;min-width:0;">' +
         '<div style="font-weight:700;font-size:13px;color:#1e293b;">' + (d.name || '이름없음') + '</div>' +
         '<div style="font-size:11px;color:#64748b;margin:1px 0;">' + (d.manufacturer || '') + (d.category ? ' · ' + d.category : '') + '</div>' +
-        '<div style="font-size:11px;color:#94a3b8;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + (d.efficacy || '').slice(0, 55) + (d.efficacy?.length > 55 ? '...' : '') + '</div>' +
+        taglinePreview +
+        '<div style="font-size:11px;color:#94a3b8;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + (d.efficacy || '').slice(0, 60) + ((d.efficacy?.length || 0) > 60 ? '...' : '') + '</div>' +
         notePreview +
       '</div>';
 
@@ -3538,6 +3542,7 @@ async function startBulkRegister() {
           version: {
             pharmacy_name:   '크롤링',
             efficacy:        drug.efficacy        || '',
+            tagline:         drug.tagline         || '',
             dosage:          drug.dosage          || '',
             pharmacist_note: drug.pharmacist_note || null,
             badges:          drug.badges          || null,
@@ -3883,9 +3888,3 @@ function addBadgePreset(badge) {
     parts.push(badge);
     el.value = parts.join(',');
   }
-}
-
-</script>
-
-</body>
-</html>
