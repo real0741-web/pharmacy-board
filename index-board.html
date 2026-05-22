@@ -1535,8 +1535,16 @@ async function fetchDrugImagesForVersion() {
 }
 
 // 버전 없는 약품 — 약품 기본정보만으로 키오스크 내보내기
-function downloadDrugBase() {
+async function downloadDrugBase() {
   if (!currentDrug) { showToast('❌ 약품 정보가 없습니다.'); return; }
+
+  // best_version_id 가 있으면 버전 상세 가져와서 모든 필드 채우기
+  if (currentDrug.best_version_id) {
+    await downloadVersion(currentDrug.best_version_id);
+    return;
+  }
+
+  // 버전이 전혀 없는 경우 — 기본 정보만
   const exportData = {
     source: '약품공유게시판',
     version: 2,
@@ -1544,7 +1552,7 @@ function downloadDrugBase() {
       name:           currentDrug.canonical_name || '',
       emoji:          currentDrug.emoji          || '💊',
       cat:            currentDrug.category       || '기타',
-      tagline:        (currentDrug.func_tags || []).join(', ').slice(0, 30),
+      tagline:        '',
       info:           '',
       pharmacistNote: '',
       imageUrl:       currentDrug.best_image_url || '',
