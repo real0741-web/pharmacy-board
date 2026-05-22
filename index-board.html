@@ -1547,7 +1547,7 @@ function downloadDrugBase() {
       tagline:        (currentDrug.func_tags || []).join(', ').slice(0, 30),
       info:           '',
       pharmacistNote: '',
-      imageUrl:       '',
+      imageUrl:       currentDrug.best_image_url || '',
       price:          0,
       list:           0,
     }
