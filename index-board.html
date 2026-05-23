@@ -42,10 +42,45 @@
   .sort-btn.active{background:var(--brand);color:white;border-color:var(--brand);}
   /* 뷰 전환 */
   .view{display:none;}.view.active{display:block;}
+  /* 장바구니 FAB */
+  #cart-fab{position:fixed;bottom:22px;right:18px;z-index:120;background:#0f766e;color:white;border:none;border-radius:50px;padding:11px 18px;font-size:14px;font-weight:800;cursor:pointer;display:flex;align-items:center;gap:7px;box-shadow:0 4px 18px rgba(15,118,110,.35);transition:all .2s;display:none;}
+  #cart-fab:hover{background:#0d6560;transform:translateY(-2px);}
+  #cart-fab .badge{background:white;color:#0f766e;border-radius:50%;width:20px;height:20px;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:900;}
+  /* 장바구니 패널 */
+  #cart-panel{position:fixed;inset:0;z-index:200;display:none;}
+  #cart-panel.open{display:flex;flex-direction:column;justify-content:flex-end;}
+  #cart-backdrop{position:absolute;inset:0;background:rgba(0,0,0,.45);}
+  #cart-drawer{position:relative;background:white;border-radius:22px 22px 0 0;max-height:78vh;display:flex;flex-direction:column;padding:20px 16px 0;}
+  #cart-items-list{overflow-y:auto;flex:1;padding-bottom:8px;}
+  .cart-item{display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid #f1f5f9;}
+  .cart-item:last-child{border-bottom:none;}
+  .cart-btn-add{font-size:11px;font-weight:700;padding:4px 9px;border-radius:8px;border:1.5px solid #0f766e;color:#0f766e;background:white;cursor:pointer;transition:all .15s;white-space:nowrap;}
+  .cart-btn-add.in-cart{background:#0f766e;color:white;}
+  .cart-btn-add.in-cart::before{content:'✓ ';}
 </style>
 </head>
 <body class="bg-slate-50 min-h-screen">
 <div id="toast" class="toast"></div>
+<!-- 장바구니 FAB -->
+<button id="cart-fab" onclick="openCartPanel()">🛒 <span class="badge" id="cart-fab-count">0</span></button>
+<!-- 장바구니 패널 -->
+<div id="cart-panel">
+  <div id="cart-backdrop" onclick="closeCartPanel()"></div>
+  <div id="cart-drawer">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;">
+      <div style="font-size:17px;font-weight:900;color:#1e293b;">🛒 장바구니 <span id="cart-count-panel" style="color:#0f766e;">0</span>개</div>
+      <div style="display:flex;gap:8px;">
+        <button onclick="clearCart()" style="font-size:12px;color:#ef4444;background:none;border:none;cursor:pointer;font-weight:700;">🗑 전체 비우기</button>
+        <button onclick="closeCartPanel()" style="font-size:18px;background:none;border:none;cursor:pointer;color:#94a3b8;">✕</button>
+      </div>
+    </div>
+    <div id="cart-items-list"></div>
+    <div style="padding:14px 0 20px;display:flex;flex-direction:column;gap:8px;">
+      <button onclick="batchDownloadCart()" style="background:#0f766e;color:white;border:none;border-radius:14px;padding:14px;font-size:15px;font-weight:800;cursor:pointer;width:100%;">📥 전체 키오스크에 가져가기</button>
+      <button onclick="closeCartPanel()" style="background:#f1f5f9;color:#64748b;border:none;border-radius:14px;padding:12px;font-size:13px;font-weight:700;cursor:pointer;width:100%;">닫기</button>
+    </div>
+  </div>
+</div>
 
 <!-- ══════════════════════════════════════
      HEADER
@@ -190,6 +225,7 @@
     <button class="sort-btn active" data-sort="downloads" onclick="setSort('downloads',this)">다운로드순</button>
     <button class="sort-btn" data-sort="versions"   onclick="setSort('versions',this)">버전많은순</button>
     <button class="sort-btn" data-sort="latest"     onclick="setSort('latest',this)">최신순</button>
+    <button class="sort-btn" data-sort="alpha"      onclick="setSort('alpha',this)">가나다순</button>
     <span id="drug-count" class="ml-auto text-xs text-slate-400"></span>
   </div>
 
@@ -1123,6 +1159,7 @@ let drugs = [];
 let currentMfr  = 'all';
 let currentCat  = 'all';
 let currentSort = 'downloads';
+let boardCart = JSON.parse(localStorage.getItem('boardCart') || '[]'); // 장바구니
 let searchQuery = '';
 let currentDrug = null;        // 상세 보기 중인 약품
 let _uploadFiles = [null, null, null];  // 이미지 파일 3개
@@ -1288,6 +1325,7 @@ function getFiltered() {
   });
   if (currentSort === 'versions')  list = [...list].sort((a,b) => (b.version_count||0)-(a.version_count||0));
   if (currentSort === 'latest')    list = [...list].sort((a,b) => new Date(b.created_at)-new Date(a.created_at));
+  if (currentSort === 'alpha')     list = [...list].sort((a,b) => (a.canonical_name||'').localeCompare(b.canonical_name||'', 'ko'));
   // 'downloads' 는 DB에서 이미 정렬됨
   return list;
 }
@@ -1339,6 +1377,11 @@ function renderDrugs() {
           <span class="font-bold text-teal-600">${d.version_count || 0}개 버전</span>
           <span class="text-slate-400">📋 ${d.total_downloads || 0}</span>
         </div>
+        <button class="cart-btn-add w-full mt-2 ${boardCart.some(c=>c.drugId===d.id)?'in-cart':''}"
+          id="cart-btn-${d.id}"
+          onclick="event.stopPropagation(); toggleCartDrug(${JSON.stringify(d)})">
+          ${boardCart.some(c=>c.drugId===d.id) ? '담김' : '🛒 담기'}
+        </button>
       </div>`;
     grid.appendChild(card);
   });
@@ -1396,8 +1439,12 @@ function renderVersions(versions) {
           <div><span class="font-bold text-blue-600 text-xs">🔬 제품 정보(성분·용량)</span><br/>${v.dosage || '<span class="text-slate-400 text-xs italic">등록된 성분·함량 정보가 없습니다.</span>'}</div>
         </div>
         <div class="flex flex-wrap gap-2 mt-3">
-          <button onclick="downloadVersion('${v.id}')" class="btn-primary flex-1 py-2 text-sm">✅ 이 버전 키오스크에 가져오기</button>
-          <button onclick="copyVersionToNew('${v.id}')" class="btn-secondary px-3 py-2 text-xs">✏️ 토대로 내 버전 만들기</button>
+          <button onclick="downloadVersion('${v.id}')" class="btn-primary flex-1 py-2 text-sm">✅ 지금 바로 가져오기</button>
+          <button id="ver-cart-btn-${v.id}" onclick="toggleCartVersion(${JSON.stringify(v)})"
+            class="cart-btn-add px-3 py-2 text-xs ${boardCart.some(c=>c.versionId===v.id)?'in-cart':''}">
+            ${boardCart.some(c=>c.versionId===v.id) ? '담김' : '🛒 장바구니'}
+          </button>
+          <button onclick="copyVersionToNew('${v.id}')" class="btn-secondary px-3 py-2 text-xs">✏️ 토대로 내 버전</button>
           ${(isOwner || isAdminMode) ? `
             <button onclick="deleteVersion('${v.id}')" class="px-3 py-2 text-xs rounded-lg bg-red-50 text-red-500 border border-red-100 cursor-pointer font-semibold hover:bg-red-100 transition-all">🗑 삭제</button>
           ` : ''}
@@ -3898,6 +3945,223 @@ function addBadgePreset(badge) {
   }
 
 }
+
+/* ══════════════════════════════════════
+   🛒 장바구니 기능
+══════════════════════════════════════ */
+function _saveCart() {
+  localStorage.setItem('boardCart', JSON.stringify(boardCart));
+  _renderCartFab();
+}
+
+function _renderCartFab() {
+  const fab = document.getElementById('cart-fab');
+  const badge = document.getElementById('cart-fab-count');
+  if (!fab || !badge) return;
+  badge.textContent = boardCart.length;
+  fab.style.display = boardCart.length > 0 ? 'flex' : 'none';
+}
+
+// 약품 카드에서 담기/빼기 토글
+function toggleCartDrug(d) {
+  const idx = boardCart.findIndex(c => c.drugId === d.id);
+  if (idx >= 0) {
+    boardCart.splice(idx, 1);
+    showToast('🗑 장바구니에서 뺐습니다');
+  } else {
+    boardCart.push({
+      drugId:    d.id,
+      versionId: d.best_version_id || null,
+      name:      d.canonical_name,
+      emoji:     d.emoji || '💊',
+      category:  d.category || '기타',
+      imageUrl:  d.best_image_url || '',
+    });
+    showToast('🛒 장바구니에 담았습니다!');
+  }
+  _saveCart();
+  // 버튼 UI 갱신
+  const btn = document.getElementById('cart-btn-' + d.id);
+  if (btn) {
+    const inCart = boardCart.some(c => c.drugId === d.id);
+    btn.classList.toggle('in-cart', inCart);
+    btn.textContent = inCart ? '✓ 담김' : '🛒 담기';
+  }
+  if (document.getElementById('cart-panel').classList.contains('open')) renderCartPanel();
+}
+
+// 버전 상세에서 담기/빼기 토글
+function toggleCartVersion(v) {
+  const drug = currentDrug || {};
+  const idx  = boardCart.findIndex(c => c.versionId === v.id);
+  if (idx >= 0) {
+    boardCart.splice(idx, 1);
+    showToast('🗑 장바구니에서 뺐습니다');
+  } else {
+    boardCart.push({
+      drugId:          drug.id || v.drug_id,
+      versionId:       v.id,
+      name:            drug.canonical_name || '',
+      emoji:           drug.emoji || '💊',
+      category:        drug.category || '기타',
+      imageUrl:        v.image_url || drug.best_image_url || '',
+      efficacy:        v.efficacy || '',
+      dosage:          v.dosage   || '',
+      pharmacistNote:  v.pharmacist_note || '',
+    });
+    showToast('🛒 장바구니에 담았습니다!');
+  }
+  _saveCart();
+  // 버전 버튼 UI 갱신
+  const btn = document.getElementById('ver-cart-btn-' + v.id);
+  if (btn) {
+    const inCart = boardCart.some(c => c.versionId === v.id);
+    btn.classList.toggle('in-cart', inCart);
+    btn.textContent = inCart ? '✓ 담김' : '🛒 장바구니';
+  }
+  if (document.getElementById('cart-panel').classList.contains('open')) renderCartPanel();
+}
+
+function openCartPanel() {
+  renderCartPanel();
+  document.getElementById('cart-panel').classList.add('open');
+  document.body.style.overflow = 'hidden';
+}
+
+function closeCartPanel() {
+  document.getElementById('cart-panel').classList.remove('open');
+  document.body.style.overflow = '';
+}
+
+function renderCartPanel() {
+  const countEl = document.getElementById('cart-count-panel');
+  const listEl  = document.getElementById('cart-items-list');
+  if (!listEl) return;
+  if (countEl) countEl.textContent = boardCart.length;
+
+  if (boardCart.length === 0) {
+    listEl.innerHTML = '<div style="text-align:center;padding:32px 0;color:#94a3b8;font-size:14px;">🛒 장바구니가 비어있어요<br/><span style="font-size:12px;">약품 카드의 "담기" 버튼을 눌러 추가하세요</span></div>';
+    return;
+  }
+
+  listEl.innerHTML = boardCart.map((item, i) => `
+    <div class="cart-item">
+      <div style="font-size:28px;flex-shrink:0;">${item.emoji}</div>
+      <div style="flex:1;min-width:0;">
+        <div style="font-weight:700;font-size:13px;color:#1e293b;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${item.name}</div>
+        <div style="font-size:11px;color:#94a3b8;">${item.category}${item.versionId ? ' · 버전 선택됨' : ' · 기본 버전'}</div>
+      </div>
+      <button onclick="removeCartItem(${i})" style="background:none;border:none;color:#ef4444;font-size:18px;cursor:pointer;padding:4px 8px;flex-shrink:0;">✕</button>
+    </div>
+  `).join('');
+}
+
+function removeCartItem(idx) {
+  boardCart.splice(idx, 1);
+  _saveCart();
+  renderCartPanel();
+  renderDrugs(); // 카드 버튼 상태 갱신
+  showToast('🗑 항목을 제거했습니다');
+}
+
+function clearCart() {
+  if (!confirm(`장바구니 ${boardCart.length}개 항목을 모두 비울까요?`)) return;
+  boardCart = [];
+  _saveCart();
+  renderCartPanel();
+  renderDrugs();
+  showToast('🗑 장바구니를 비웠습니다');
+}
+
+async function batchDownloadCart() {
+  if (boardCart.length === 0) { showToast('🛒 장바구니가 비어있어요'); return; }
+  showToast('⏳ 버전 데이터를 불러오는 중...');
+
+  const exportList = [];
+  for (const item of boardCart) {
+    try {
+      let drugObj = {
+        name: item.name, emoji: item.emoji, cat: item.category,
+        tagline: item.efficacy || '', info: item.dosage || '',
+        pharmacistNote: item.pharmacistNote || '', imageUrl: item.imageUrl || '',
+        price: 0, list: 0,
+      };
+      // versionId가 있으면 전체 데이터 로드
+      if (item.versionId && !item.efficacy) {
+        const res = await fetch(WORKER_URL + '/?action=boardGetVersion&versionId=' + encodeURIComponent(item.versionId));
+        if (res.ok) {
+          const v = await res.json();
+          if (!v.error) {
+            drugObj.tagline       = v.efficacy        || '';
+            drugObj.info          = v.dosage           || '';
+            drugObj.pharmacistNote= v.pharmacist_note || '';
+            drugObj.imageUrl      = v.image_url        || item.imageUrl || '';
+          }
+        }
+      }
+      exportList.push({ source: '약품공유게시판', version: 2, drug: drugObj });
+    } catch(e) {}
+  }
+
+  if (exportList.length === 0) { showToast('❌ 가져올 데이터가 없습니다'); return; }
+  showCartKioskSelector(exportList);
+}
+
+function showCartKioskSelector(exportList) {
+  const old = document.getElementById('kiosk-selector-popup');
+  if (old) old.remove();
+
+  const encoded = btoa(encodeURIComponent(JSON.stringify(exportList)));
+  const shop1Url = KIOSK_URLS.shop1;
+  const shop2Url = KIOSK_URLS.shop2;
+
+  const popup = document.createElement('div');
+  popup.id = 'kiosk-selector-popup';
+  popup.className = 'fixed inset-0 z-[300] bg-black/40 flex items-end justify-center p-4';
+  popup.innerHTML = `
+    <div class="bg-white rounded-2xl shadow-2xl w-full max-w-sm p-5 fade-in">
+      <h3 class="font-extrabold text-slate-800 text-base mb-1">📥 장바구니 키오스크로 가져가기</h3>
+      <p class="text-xs text-slate-400 mb-4">총 <strong>${exportList.length}개</strong> 약품을 어느 키오스크에 추가할까요?</p>
+      <div class="space-y-2 mb-4">
+        ${shop1Url ? `
+        <button onclick="openKioskBatch('${shop1Url}','${encoded}')"
+          class="w-full flex items-center gap-3 px-4 py-3 rounded-xl border-2 border-teal-400 bg-teal-50 hover:bg-teal-100 transition-all text-left">
+          <span class="text-xl">🏪</span>
+          <div><div class="font-bold text-teal-800 text-sm">1호점 키오스크</div>
+          <div class="text-xs text-slate-400 truncate">${shop1Url}</div></div>
+        </button>` : ''}
+        ${shop2Url ? `
+        <button onclick="openKioskBatch('${shop2Url}','${encoded}')"
+          class="w-full flex items-center gap-3 px-4 py-3 rounded-xl border-2 border-purple-400 bg-purple-50 hover:bg-purple-100 transition-all text-left">
+          <span class="text-xl">🏪</span>
+          <div><div class="font-bold text-purple-800 text-sm">2호점 키오스크</div>
+          <div class="text-xs text-slate-400 truncate">${shop2Url}</div></div>
+        </button>` : `
+        <div class="w-full flex items-center gap-3 px-4 py-3 rounded-xl border border-dashed border-slate-200 text-slate-400 text-sm">
+          <span class="text-xl">🏪</span>
+          <div><div class="font-semibold text-sm">2호점 키오스크</div>
+          <div class="text-xs">설정에서 URL을 등록하세요</div></div>
+        </div>`}
+      </div>
+      <button onclick="document.getElementById('kiosk-selector-popup').remove()"
+        class="w-full py-2 rounded-xl bg-slate-100 text-sm text-slate-500 hover:bg-slate-200">취소</button>
+    </div>`;
+  document.body.appendChild(popup);
+  popup.addEventListener('click', e => { if (e.target === popup) popup.remove(); });
+}
+
+function openKioskBatch(baseUrl, encoded) {
+  document.getElementById('kiosk-selector-popup')?.remove();
+  closeCartPanel();
+  const url = baseUrl.replace(/\/$/, '') + '/?mode=admin&importDrugs=' + encoded;
+  window.open(url, '_blank');
+  showToast('✅ 키오스크가 열렸습니다! PIN 입력 후 약품들이 자동 추가됩니다.');
+}
+
+// 페이지 로드시 FAB 초기화
+document.addEventListener('DOMContentLoaded', function() {
+  _renderCartFab();
+});
 
 </script>
 </body>
