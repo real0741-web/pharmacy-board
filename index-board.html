@@ -184,17 +184,11 @@
     </div>
   </div>
 
-  <!-- 제약사 필터 -->
+  <!-- 제약사 필터 (JS에서 동적 생성) -->
   <div class="max-w-5xl mx-auto px-4 pt-3">
-    <div class="flex gap-2 overflow-x-auto no-scrollbar pb-1">
+    <div id="mfr-chips-row" class="flex gap-2 overflow-x-auto no-scrollbar pb-1">
       <button class="chip active" data-mfr="all" onclick="setMfrFilter('all',this)">🏪 전체</button>
-      <button class="chip" data-mfr="동아제약"  onclick="setMfrFilter('동아제약',this)">동아제약</button>
-      <button class="chip" data-mfr="한미약품"  onclick="setMfrFilter('한미약품',this)">한미약품</button>
-      <button class="chip" data-mfr="종근당"    onclick="setMfrFilter('종근당',this)">종근당</button>
-      <button class="chip" data-mfr="유한양행"  onclick="setMfrFilter('유한양행',this)">유한양행</button>
-      <button class="chip" data-mfr="보령제약"  onclick="setMfrFilter('보령제약',this)">보령제약</button>
-      <button class="chip" data-mfr="광동제약"  onclick="setMfrFilter('광동제약',this)">광동제약</button>
-      <button class="chip" data-mfr="기타"      onclick="setMfrFilter('기타',this)">기타</button>
+      <!-- 제약사 칩은 renderMfrChips()가 동적으로 생성 -->
     </div>
     <!-- 관리자 전용: 제약사별 크롤링 바 -->
     <div id="mfr-crawl-bar" class="hidden pt-1 pb-0.5">
@@ -221,6 +215,16 @@
       <button class="chip" style="font-size:11px;padding:4px 11px;" data-cat="비타민·영양제" onclick="setCatFilter('비타민·영양제',this)">💊 비타민·영양제</button>
       <button class="chip" style="font-size:11px;padding:4px 11px;" data-cat="상비약"      onclick="setCatFilter('상비약',this)">🩹 상비약</button>
       <button class="chip" style="font-size:11px;padding:4px 11px;" data-cat="기타"        onclick="setCatFilter('기타',this)">📦 기타</button>
+    </div>
+  </div>
+
+  <!-- 목록 내 검색창 -->
+  <div class="max-w-5xl mx-auto px-4 pt-1 pb-1">
+    <div class="relative">
+      <span class="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none">🔍</span>
+      <input id="list-search-input" type="search" placeholder="약품명으로 빠르게 찾기..."
+        class="w-full pl-9 pr-4 py-2.5 rounded-xl border border-slate-200 bg-white text-sm shadow-sm focus:outline-none focus:border-teal-400 focus:ring-2 focus:ring-teal-100"
+        oninput="onListSearch(this.value)"/>
     </div>
   </div>
 
@@ -638,13 +642,14 @@
     </div>
     <div class="field">
       <label>제약사 <span class="text-red-400">*</span></label>
-      <select id="nd-mfr">
-        <option value="">선택해주세요</option>
+      <input id="nd-mfr" type="text" list="mfr-datalist" placeholder="예: 동아제약 (직접 입력 가능)"/>
+      <datalist id="mfr-datalist">
         <option>동아제약</option><option>한미약품</option><option>종근당</option>
         <option>유한양행</option><option>보령제약</option><option>광동제약</option>
         <option>대웅제약</option><option>일동제약</option><option>한독</option>
-        <option>한국얀센</option><option>GSK</option><option>기타</option>
-      </select>
+        <option>한국얀센</option><option>GSK</option><option>동화약품</option>
+        <option>JW중외제약</option><option>녹십자</option><option>기타</option>
+      </datalist>
     </div>
     <div class="field">
       <label>카테고리 <span class="text-red-400">*</span></label>
@@ -1273,6 +1278,7 @@ async function loadDrugs() {
     if (data && data.error) throw new Error(data.error);
     drugs = Array.isArray(data) ? data : [];
     loadEl.classList.add('hidden');
+    renderMfrChips(); // 실제 DB 제약사로 칩 재생성
   } catch(e) {
     console.error('loadDrugs:', e);
     drugs = [];
@@ -2199,10 +2205,76 @@ function openImageFull(url) {
 /* ══════════════════════════════════════
    필터 & 검색
 ══════════════════════════════════════ */
+/* ── 제약사 칩 동적 렌더링 ───────────────────────────── */
+function renderMfrChips() {
+  const row = document.getElementById('mfr-chips-row');
+  if (!row) return;
+
+  // drugs에 실제로 있는 제약사만 추출 (가나다순)
+  const mfrs = [...new Set(drugs.map(function(d){ return d.manufacturer_name; }).filter(Boolean))].sort(function(a,b){
+    return a.localeCompare(b, 'ko');
+  });
+
+  let html = '<button class="chip ' + (currentMfr === 'all' ? 'active' : '') + '" data-mfr="all" onclick="setMfrFilter(\'all\',this)">🏪 전체</button>';
+
+  mfrs.forEach(function(mfr) {
+    const safe = mfr.replace(/'/g, "\\'");
+    const esc  = mfr.replace(/"/g, '&quot;');
+    html += '<button class="chip ' + (currentMfr === mfr ? 'active' : '') + '" data-mfr="' + esc + '" onclick="setMfrFilter(\'' + safe + '\',this)">' + mfr + '</button>';
+  });
+
+  // 관리자 전용: 제약사 추가 버튼
+  if (_urlAdminMode) {
+    html += '<button onclick="promptAddMfr()" style="white-space:nowrap;font-size:11px;font-weight:700;padding:4px 12px;border-radius:20px;border:1.5px dashed #94a3b8;background:white;color:#64748b;cursor:pointer;flex-shrink:0;">+ 제약사 추가</button>';
+  }
+
+  row.innerHTML = html;
+
+  // datalist에도 실제 DB 제약사 추가 (중복 제외)
+  const dl = document.getElementById('mfr-datalist');
+  if (dl) {
+    const existing = Array.from(dl.options).map(function(o){ return o.value; });
+    mfrs.forEach(function(mfr) {
+      if (!existing.includes(mfr)) {
+        const opt = document.createElement('option');
+        opt.value = mfr;
+        dl.appendChild(opt);
+      }
+    });
+  }
+}
+
+// 관리자: 제약사 추가 (해당 약품 manufacturer_name에 직접 반영)
+async function promptAddMfr() {
+  const name = prompt('추가할 제약사 이름을 입력하세요:');
+  if (!name || !name.trim()) return;
+  const trimmed = name.trim();
+  // 이미 있는지 확인
+  const exists = drugs.some(function(d){ return d.manufacturer_name === trimmed; });
+  if (exists) { showToast('이미 있는 제약사입니다.'); return; }
+  // 새 제약사는 실제 약품이 등록될 때 자동 추가됨 — 여기서는 필터 미리 표시만
+  showToast('✅ "' + trimmed + '" 추가됨 — 이 제약사로 약품 등록 시 목록에 나타납니다', 3500);
+  // 새 약품 등록 다이얼로그에 해당 제약사 미리 선택
+  openNewDrugModal(trimmed);
+}
+
 function setMfrFilter(val, btn) {
   currentMfr = val;
   document.querySelectorAll('[data-mfr]').forEach(function(b){ b.classList.remove('active'); });
-  btn.classList.add('active');
+  if (btn) btn.classList.add('active');
+  // chips row에서 해당 mfr 버튼 active 처리 (동적 생성 후에도 유지)
+  document.querySelectorAll('#mfr-chips-row button[data-mfr]').forEach(function(b){
+    if (b.dataset.mfr === val) b.classList.add('active');
+  });
+  renderDrugs();
+}
+
+/* ── 목록 내 검색 (헤더 검색과 동기화) ─────────────────── */
+function onListSearch(val) {
+  searchQuery = val;
+  // 헤더 검색창도 동기화
+  const hdr = document.getElementById('search-input');
+  if (hdr && hdr.value !== val) hdr.value = val;
   renderDrugs();
 }
 
@@ -2222,6 +2294,9 @@ function setSort(val, btn) {
 
 function onSearch() {
   searchQuery = document.getElementById('search-input').value;
+  // 목록 내 검색창도 동기화
+  const listSrch = document.getElementById('list-search-input');
+  if (listSrch && listSrch.value !== searchQuery) listSrch.value = searchQuery;
   renderDrugs();
 }
 
@@ -2692,7 +2767,7 @@ function regImgPreview2() {
 /* ══════════════════════════════════════
    새 약품 등록 모달 (관리자)
 ══════════════════════════════════════ */
-function openNewDrugModal() {
+function openNewDrugModal(presetMfr) {
   // 검색창 초기화
   const si = document.getElementById('nd-search-input');
   const ss = document.getElementById('nd-search-status');
@@ -2703,7 +2778,7 @@ function openNewDrugModal() {
   _boardDrugAI = {};
   document.getElementById('nd-name').value  = '';
   document.getElementById('nd-emoji').value = '💊';
-  document.getElementById('nd-mfr').value   = '';
+  document.getElementById('nd-mfr').value   = presetMfr || '';
   document.getElementById('nd-cat').value   = '';
   document.getElementById('nd-tags').value  = '';
   document.getElementById('nd-error').classList.add('hidden');
@@ -3732,8 +3807,8 @@ function _fillBoardDrug(d) {
   var name=d.name||'', mfr=d.mfr||'', imageUrl=d.imageUrl||'', efficacy=d.efficacy||'', dosage=d.dosage||'', note=d.note||'';
   if (name) { var el=document.getElementById('nd-name'); if (el) el.value=name; }
   if (mfr) {
-    var sel=document.getElementById('nd-mfr');
-    if (sel) { var opt=Array.from(sel.options).find(function(o){return o.value&&mfr.includes(o.value);}); sel.value=opt?opt.value:'기타'; }
+    var mfrEl=document.getElementById('nd-mfr');
+    if (mfrEl) mfrEl.value = mfr; // input[type=text]로 직접 설정
   }
   _boardDrugAI = { efficacy:efficacy, dosage:dosage, note:note, imageUrl:imageUrl };
   var status=document.getElementById('nd-search-status');
