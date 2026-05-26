@@ -660,8 +660,10 @@
       </select>
     </div>
     <div class="field">
-      <label>기능 태그 <span class="text-slate-400 font-normal">(쉼표로 구분)</span></label>
-      <input id="nd-tags" type="text" placeholder="예: 두통, 해열, 진통"/>
+      <label>🏅 배지 <span class="text-slate-400 font-normal">(클릭해서 선택)</span></label>
+      <div id="nd-badge-chips" class="flex flex-wrap gap-1.5 mb-2 mt-1"></div>
+      <label>🏷 기능 태그 <span class="text-slate-400 font-normal">(추가 태그, 쉼표 구분)</span></label>
+      <input id="nd-tags" type="text" placeholder="예: 두통, 해열, 진통" oninput="_onNdTagsInput()"/>
     </div>
     <div id="nd-error" class="hidden text-xs text-red-500 mb-3 p-2 bg-red-50 rounded-lg"></div>
     <div class="bg-teal-50 rounded-xl p-3 mb-3 text-xs text-teal-700 leading-relaxed">
@@ -748,18 +750,14 @@
       <textarea id="vm-efficacy" rows="1" placeholder="예: 두통·치통·생리통·근육통 완화, 해열"
         style="border:1.5px solid #e2e8f0;border-radius:10px;padding:9px 12px;font-size:14px;width:100%;resize:vertical;"></textarea>
     </div>
-    <!-- ② 배지 (badges) -->
+    <!-- ② 배지 (badges) — 클릭 토글형 -->
     <div class="field">
-      <label>🏷 배지 <span class="text-slate-400 font-normal">(콤마 구분 · 선택)</span></label>
-      <input id="vm-badges" type="text" placeholder="예: pick,추천,냉장보관,처방전필요"
-        style="border:1.5px solid #e2e8f0;border-radius:10px;padding:9px 12px;font-size:14px;width:100%;"/>
-      <div class="flex flex-wrap gap-1.5 mt-2">
-        <span class="badge-preset text-xs px-2.5 py-1 rounded-full bg-slate-100 text-slate-600 cursor-pointer font-semibold hover:bg-teal-100 hover:text-teal-700 transition-all" onclick="addBadgePreset('pick')">⭐ pick</span>
-        <span class="badge-preset text-xs px-2.5 py-1 rounded-full bg-slate-100 text-slate-600 cursor-pointer font-semibold hover:bg-teal-100 hover:text-teal-700 transition-all" onclick="addBadgePreset('추천')">👍 추천</span>
-        <span class="badge-preset text-xs px-2.5 py-1 rounded-full bg-slate-100 text-slate-600 cursor-pointer font-semibold hover:bg-teal-100 hover:text-teal-700 transition-all" onclick="addBadgePreset('냉장보관')">🧊 냉장보관</span>
-        <span class="badge-preset text-xs px-2.5 py-1 rounded-full bg-slate-100 text-slate-600 cursor-pointer font-semibold hover:bg-teal-100 hover:text-teal-700 transition-all" onclick="addBadgePreset('처방전필요')">Rx 처방전필요</span>
-        <span class="badge-preset text-xs px-2.5 py-1 rounded-full bg-slate-100 text-slate-600 cursor-pointer font-semibold hover:bg-teal-100 hover:text-teal-700 transition-all" onclick="addBadgePreset('고령자주의')">⚠️ 고령자주의</span>
-      </div>
+      <label>🏅 배지 <span class="text-slate-400 font-normal">(클릭해서 선택 · 키오스크 카드에 표시됨)</span></label>
+      <div id="vm-badge-chips" class="flex flex-wrap gap-1.5 mb-2 mt-1"></div>
+      <input id="vm-badges" type="text" placeholder="직접 입력 (예: 냉장보관, 처방전필요)"
+        style="border:1.5px solid #e2e8f0;border-radius:10px;padding:9px 12px;font-size:13px;width:100%;"
+        oninput="_syncVmBadgesFromInput()"/>
+      <p style="font-size:11px;color:#94a3b8;margin-top:4px;">프리셋 외 배지는 위 칸에 직접 입력하세요</p>
     </div>
     <!-- ③ 복약 지도 (pharmacistNote) -->
     <div class="field">
@@ -916,12 +914,15 @@
                    focus:border-teal-500 focus:outline-none resize-none"></textarea>
         </div>
 
-        <!-- 기능 태그 -->
+        <!-- 배지 + 기능 태그 -->
         <div>
-          <label class="text-xs font-bold text-slate-500 mb-1 block">🏷 기능 태그 <span class="font-normal">(쉼표 구분)</span></label>
+          <label class="text-xs font-bold text-slate-500 mb-1.5 block">🏅 배지 <span class="font-normal text-slate-400">(클릭해서 선택 · 키오스크 카드에 표시됨)</span></label>
+          <div id="reg-badge-chips" class="flex flex-wrap gap-1.5 mb-2"></div>
+          <label class="text-xs font-bold text-slate-500 mb-1 block">🏷 기능 태그 <span class="font-normal">(배지 외 추가 태그, 쉼표 구분)</span></label>
           <input id="reg-tags" type="text" placeholder="예: 두통, 해열, 진통"
             class="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm
-                   focus:border-teal-500 focus:outline-none"/>
+                   focus:border-teal-500 focus:outline-none"
+            oninput="_onRegTagsInput()"/>
         </div>
 
       </div><!-- /reg-result -->
@@ -1777,7 +1778,7 @@ function openVersionUpload(prefill) {
   document.getElementById('vm-efficacy').value        = prefill?.efficacy || '';
   document.getElementById('vm-dosage').value          = prefill?.dosage || '';
   document.getElementById('vm-note').value            = prefill?.pharmacist_note || '';
-  document.getElementById('vm-badges').value          = prefill?.badges || '';
+  _initVmBadges(prefill?.badges || '');   // 배지 칩 + 텍스트 초기화
   _uploadFiles = [null, null, null];
   [1,2,3].forEach(i => {
     const p   = document.getElementById('img-preview-'+i);
@@ -1817,7 +1818,8 @@ async function submitVersion() {
   const efficacy  = document.getElementById('vm-efficacy').value.trim();
   const dosage    = document.getElementById('vm-dosage').value.trim();
   const note      = document.getElementById('vm-note').value.trim();
-  const badges    = document.getElementById('vm-badges').value.trim();
+  const badgesArr = _getVmAllBadges();
+  const badges    = badgesArr.join(',');
   const imgUrl1   = document.getElementById('vm-img-url-1').value.trim();
   errEl.classList.add('hidden');
   if (!efficacy || !dosage) {
@@ -2205,6 +2207,78 @@ function openImageFull(url) {
 /* ══════════════════════════════════════
    필터 & 검색
 ══════════════════════════════════════ */
+/* ══════════════════════════════════════
+   배지 (뱃지) 프리셋 시스템
+══════════════════════════════════════ */
+const BADGE_PRESETS = [
+  '약사 PICK','대용량','고함량','활성형','가성비 1위','함량 1위',
+  '일반의약품','전문의약품','무방부제','알티지','6년근','실리마린','한정수량','신상품'
+];
+
+// 선택된 배지 상태 (버전 모달 / 신규 약품 모달 각각)
+let _regSelectedBadges = [];
+let _ndSelectedBadges  = [];
+
+/* 배지 칩 HTML 렌더 */
+function _renderBadgeChips(containerId, selected, toggleFn) {
+  const wrap = document.getElementById(containerId);
+  if (!wrap) return;
+  wrap.innerHTML = BADGE_PRESETS.map(function(b) {
+    const on = selected.includes(b);
+    return '<button type="button" onclick="' + toggleFn + '(\'' + b.replace(/'/g,"\\'") + '\')" style="'
+      + 'font-size:11px;font-weight:700;padding:4px 11px;border-radius:20px;cursor:pointer;transition:all .15s;'
+      + (on
+        ? 'background:#0f766e;color:white;border:1.5px solid #0f766e;'
+        : 'background:white;color:#475569;border:1.5px solid #cbd5e1;')
+      + '">' + (on ? '✓ ' : '') + b + '</button>';
+  }).join('');
+}
+
+/* 버전 모달 배지 토글 */
+function toggleRegBadge(b) {
+  const idx = _regSelectedBadges.indexOf(b);
+  if (idx >= 0) _regSelectedBadges.splice(idx, 1);
+  else _regSelectedBadges.push(b);
+  _renderBadgeChips('reg-badge-chips', _regSelectedBadges, 'toggleRegBadge');
+}
+
+/* 신규 약품 모달 배지 토글 */
+function toggleNdBadge(b) {
+  const idx = _ndSelectedBadges.indexOf(b);
+  if (idx >= 0) _ndSelectedBadges.splice(idx, 1);
+  else _ndSelectedBadges.push(b);
+  _renderBadgeChips('nd-badge-chips', _ndSelectedBadges, 'toggleNdBadge');
+}
+
+/* reg-tags 직접 입력 시 (배지와 별도) */
+function _onRegTagsInput() { /* 입력만 받음 — 배지 칩과 별도 */ }
+function _onNdTagsInput()  { /* 입력만 받음 — 배지 칩과 별도 */ }
+
+/* 배지 + 기능 태그 합쳐서 최종 배열 반환 */
+function _getRegAllTags() {
+  const extra = (document.getElementById('reg-tags')?.value || '').split(',').map(function(s){ return s.trim(); }).filter(Boolean);
+  return [...new Set([..._regSelectedBadges, ...extra])];
+}
+function _getNdAllTags() {
+  const extra = (document.getElementById('nd-tags')?.value || '').split(',').map(function(s){ return s.trim(); }).filter(Boolean);
+  return [...new Set([..._ndSelectedBadges, ...extra])];
+}
+
+/* 배지 초기화 (모달 열 때) */
+function _initRegBadges(existingTags) {
+  _regSelectedBadges = (existingTags || []).filter(function(t){ return BADGE_PRESETS.includes(t); });
+  const nonPreset = (existingTags || []).filter(function(t){ return !BADGE_PRESETS.includes(t); });
+  const tagsInput = document.getElementById('reg-tags');
+  if (tagsInput) tagsInput.value = nonPreset.join(', ');
+  _renderBadgeChips('reg-badge-chips', _regSelectedBadges, 'toggleRegBadge');
+}
+function _initNdBadges() {
+  _ndSelectedBadges = [];
+  const tagsInput = document.getElementById('nd-tags');
+  if (tagsInput) tagsInput.value = '';
+  _renderBadgeChips('nd-badge-chips', _ndSelectedBadges, 'toggleNdBadge');
+}
+
 /* ── 제약사 칩 동적 렌더링 ───────────────────────────── */
 function renderMfrChips() {
   const row = document.getElementById('mfr-chips-row');
@@ -2557,6 +2631,7 @@ function openRegModal() {
   aiBtn.disabled = false;
   document.getElementById('reg-ai-icon').textContent  = '🤖';
   document.getElementById('reg-ai-label').textContent = 'AI 분석';
+  _initRegBadges([]); // 배지 칩 초기화
   document.getElementById('reg-modal').classList.remove('hidden');
   setTimeout(() => document.getElementById('reg-name').focus(), 120);
 }
@@ -2599,9 +2674,9 @@ async function regAI() {
     const catMatch = Array.from(catSel.options).find(o => o.value === r.category);
     catSel.value = catMatch ? r.category : '기타';
 
-    // 태그
+    // 배지 + 태그 (AI 생성 → 칩 + 텍스트 분리)
     if (r.badges && r.badges.length) {
-      document.getElementById('reg-tags').value = r.badges.join(', ');
+      _initRegBadges(r.badges);
     }
 
     // 이미지
@@ -2648,7 +2723,6 @@ async function regSubmit(continueMode) {
   const efficacy = (document.getElementById('reg-efficacy').value || '').trim();
   const dosage   = (document.getElementById('reg-dosage').value   || '').trim();
   const note     = (document.getElementById('reg-note').value     || '').trim();
-  const tagsRaw  = (document.getElementById('reg-tags').value     || '').trim();
   const imgUrl   = (document.getElementById('reg-img-url')?.value  || document.getElementById('reg-img-url2')?.value || '').trim();
 
   if (!name) {
@@ -2660,8 +2734,7 @@ async function regSubmit(continueMode) {
   document.getElementById('reg-status').textContent = '⏳ Supabase에 저장 중...';
 
   try {
-    // Cloudflare Worker를 통해 저장 (브라우저 확장 프로그램 차단 우회)
-    const tagArr = tagsRaw ? tagsRaw.split(',').map(t => t.trim()).filter(Boolean) : [];
+    const tagArr = _getRegAllTags(); // 배지 칩 + 직접 입력 태그 합산
     const saveRes = await fetch(WORKER_URL + '/?action=boardSave', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -2780,7 +2853,7 @@ function openNewDrugModal(presetMfr) {
   document.getElementById('nd-emoji').value = '💊';
   document.getElementById('nd-mfr').value   = presetMfr || '';
   document.getElementById('nd-cat').value   = '';
-  document.getElementById('nd-tags').value  = '';
+  _initNdBadges(); // 배지 칩 초기화 (nd-tags도 내부에서 초기화)
   document.getElementById('nd-error').classList.add('hidden');
   document.getElementById('new-drug-modal').classList.remove('hidden');
 }
@@ -2796,7 +2869,6 @@ async function submitNewDrug() {
   const mfr     = (document.getElementById('nd-mfr')?.value || '').trim();
   const cat     = (document.getElementById('nd-cat')?.value || '').trim();
   const emoji   = (document.getElementById('nd-emoji')?.value || '💊').trim();
-  const tags    = (document.getElementById('nd-tags')?.value || '').trim();
   errEl.classList.add('hidden');
   if (!name) { errEl.textContent = '약품명을 입력해주세요.'; errEl.classList.remove('hidden'); return; }
   if (!cat)  { errEl.textContent = '카테고리를 선택해주세요.'; errEl.classList.remove('hidden'); return; }
@@ -2811,7 +2883,7 @@ async function submitNewDrug() {
       mfrId = mfrData.id;
     }
   }
-  const tagArr = tags ? tags.split(',').map(t => t.trim()).filter(Boolean) : [];
+  const tagArr = _getNdAllTags(); // 배지 칩 + 직접 입력 태그 합산
   const { data, error } = await sb.from('drugs').insert({
     canonical_name: name,
     emoji: emoji,
@@ -3955,11 +4027,18 @@ async function _vmFetchAIText(drugName, force) {
     const noteEl   = document.getElementById('vm-note');
     const badgesEl = document.getElementById('vm-badges');
 
+    const _mfdsKey = getBoardMfdsKey();
     const res = await fetch(WORKER_URL + '/?action=summarizeDrugBoard', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name: drugName, manufacturer: currentDrug?.manufacturer_name || '', efficacy: '', dosage: '' }),
-      signal: AbortSignal.timeout(20000),
+      body: JSON.stringify({
+        name: drugName,
+        manufacturer: currentDrug?.manufacturer_name || '',
+        category:     currentDrug?.category          || '',
+        mfdsApiKey:   _mfdsKey,
+        efficacy: '', dosage: '',
+      }),
+      signal: AbortSignal.timeout(30000),
     });
     const result = await res.json();
     if (!res.ok || result.error) throw new Error(result.error);
@@ -3967,7 +4046,17 @@ async function _vmFetchAIText(drugName, force) {
     if (effEl    && result.efficacy        && (force || !effEl.value.trim()))    effEl.value    = result.efficacy;
     if (dosEl    && result.dosage          && (force || !dosEl.value.trim()))    dosEl.value    = result.dosage;
     if (noteEl   && result.pharmacist_note && (force || !noteEl.value.trim()))   noteEl.value   = result.pharmacist_note;
-    if (badgesEl && result.badges          && (force || !badgesEl.value.trim())) badgesEl.value = result.badges;
+    if (result.badges && (force || _vmSelectedBadges.length === 0)) {
+      _initVmBadges(Array.isArray(result.badges) ? result.badges.join(',') : result.badges);
+    }
+    // 학습 샘플 참고 표시
+    if (result._learningSamples > 0) {
+      const statusBar = document.getElementById('vm-ai-status-bar');
+      if (statusBar) {
+        statusBar.textContent = `📚 게시판 우수 버전 ${result._learningSamples}개 참고 · 출처: ${result._source || 'AI'}`;
+        statusBar.classList.remove('hidden');
+      }
+    }
   } catch(e) {
     console.warn('[vmFetchAIText]', e);
   }
@@ -3984,29 +4073,37 @@ async function aiSummarizeNote() {
   btn.textContent = '⏳ AI 작성 중...';
 
   try {
+    const _mfdsKey2 = getBoardMfdsKey();
     const res = await fetch(WORKER_URL + '/?action=summarizeDrugBoard', {
       method:  'POST',
       headers: { 'Content-Type': 'application/json' },
       body:    JSON.stringify({
-        name:         currentDrug?.canonical_name  || '',
+        name:         currentDrug?.canonical_name    || '',
         manufacturer: currentDrug?.manufacturer_name || '',
+        category:     currentDrug?.category          || '',
+        mfdsApiKey:   _mfdsKey2,
         efficacy:     (effEl?.value || '').slice(0, 200),
         dosage:       (dosEl?.value || '').slice(0, 200),
       }),
-      signal: AbortSignal.timeout(25000),
+      signal: AbortSignal.timeout(30000),
     });
     const result = await res.json();
     if (!res.ok || result.error) throw new Error(result.error || 'AI 자동완성 실패');
 
     let filled = [];
-    const badgesEl2 = document.getElementById('vm-badges');
     if (effEl    && result.efficacy)        { effEl.value    = result.efficacy;        filled.push('한 줄 설명'); }
     if (dosEl    && result.dosage)          { dosEl.value    = result.dosage;          filled.push('제품 정보'); }
     if (noteEl   && result.pharmacist_note) { noteEl.value   = result.pharmacist_note; filled.push('복약 지도'); }
-    if (badgesEl2 && result.badges)         { badgesEl2.value = result.badges;         filled.push('배지'); }
+    if (result.badges) {
+      _initVmBadges(Array.isArray(result.badges) ? result.badges.join(',') : result.badges);
+      filled.push('배지');
+    }
 
+    // 학습 샘플 + 출처 표시
+    const _sourceLabel = result._source ? ` · 출처: ${result._source}` : '';
+    const _learnLabel  = result._learningSamples > 0 ? ` · 📚 우수 버전 ${result._learningSamples}개 참고` : '';
     if (filled.length > 0) {
-      showToast('✅ ' + filled.join(' · ') + ' 자동 입력됨');
+      showToast('✅ ' + filled.join(' · ') + ' 자동 입력됨' + _learnLabel + _sourceLabel);
     } else {
       showToast('⚠️ AI가 내용을 생성하지 못했어요. 약품명을 확인해주세요.');
     }
@@ -4019,17 +4116,53 @@ async function aiSummarizeNote() {
   }
 }
 
-function addBadgePreset(badge) {
-  const el = document.getElementById('vm-badges');
-  if (!el) return;
-  const cur = el.value.trim();
-  const parts = cur ? cur.split(',').map(s => s.trim()).filter(Boolean) : [];
-  if (!parts.includes(badge)) {
-    parts.push(badge);
-    el.value = parts.join(',');
-  }
+/* vm-badges 토글형 시스템 */
+let _vmSelectedBadges = [];
 
+function _renderVmBadgeChips() {
+  const wrap = document.getElementById('vm-badge-chips');
+  if (!wrap) return;
+  wrap.innerHTML = BADGE_PRESETS.map(function(b) {
+    const on = _vmSelectedBadges.includes(b);
+    return '<button type="button" onclick="toggleVmBadge(\'' + b.replace(/'/g,"\\'") + '\')" style="'
+      + 'font-size:11px;font-weight:700;padding:4px 11px;border-radius:20px;cursor:pointer;transition:all .15s;'
+      + (on
+        ? 'background:#0f766e;color:white;border:1.5px solid #0f766e;'
+        : 'background:white;color:#475569;border:1.5px solid #cbd5e1;')
+      + '">' + (on ? '✓ ' : '') + b + '</button>';
+  }).join('');
 }
+
+function toggleVmBadge(b) {
+  const idx = _vmSelectedBadges.indexOf(b);
+  if (idx >= 0) _vmSelectedBadges.splice(idx, 1);
+  else _vmSelectedBadges.push(b);
+  _renderVmBadgeChips();
+}
+
+function _syncVmBadgesFromInput() { /* 직접 입력은 별도 보관 */ }
+
+/* 모달 열 때: 기존 배지 값 → 칩 + 텍스트 분리 */
+function _initVmBadges(existingVal) {
+  const all = existingVal
+    ? existingVal.split(',').map(function(s){ return s.trim(); }).filter(Boolean)
+    : [];
+  _vmSelectedBadges = all.filter(function(b){ return BADGE_PRESETS.includes(b); });
+  const nonPreset   = all.filter(function(b){ return !BADGE_PRESETS.includes(b); });
+  const inp = document.getElementById('vm-badges');
+  if (inp) inp.value = nonPreset.join(', ');
+  _renderVmBadgeChips();
+}
+
+/* 최종 배지 배열 반환 (칩 선택 + 직접 입력 합산) */
+function _getVmAllBadges() {
+  const extra = (document.getElementById('vm-badges')?.value || '')
+    .split(',').map(function(s){ return s.trim(); }).filter(Boolean);
+  return [...new Set([..._vmSelectedBadges, ...extra])];
+}
+
+/* 하위 호환: 구버전 addBadgePreset → toggleVmBadge로 위임 */
+function addBadgePreset(badge) { toggleVmBadge(badge); }
 
 
 
