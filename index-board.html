@@ -154,6 +154,10 @@
         class="shrink-0 bg-amber-500 text-white font-bold px-3 py-1 rounded-lg hover:bg-amber-600 transition-all">
         ⚙️ 설정 열기
       </button>
+      <button onclick="exitAdminMode()"
+        class="shrink-0 bg-gray-200 text-gray-600 font-bold px-3 py-1 rounded-lg hover:bg-gray-300 transition-all border border-gray-300">
+        🔓 관리자 해제
+      </button>
     </div>
   </div>
 
@@ -1186,13 +1190,13 @@ let _uploadFiles = [null, null, null];  // 이미지 파일 3개
 ══════════════════════════════════════ */
 window.addEventListener('DOMContentLoaded', () => {
   sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON);
-  // 관리자 모드: 비밀번호 확인
-  if (_urlAdminMode) {
-    if (localStorage.getItem('boardAdminVerified') === 'true') {
-      isAdminMode = true;
-    } else {
-      showAdminPwGate();
-    }
+  // 관리자 모드: URL param OR localStorage 어느 쪽이든 유지
+  // - ?mode=admin 첫 방문 시 PIN 게이트 표시
+  // - 이미 boardAdminVerified=true 이면 URL param 없어도 복원
+  if (localStorage.getItem('boardAdminVerified') === 'true') {
+    isAdminMode = true;
+  } else if (_urlAdminMode) {
+    showAdminPwGate();
   }
   updateHeaderAuth();
   sb.auth.onAuthStateChange(async (_e, session) => {
@@ -1201,8 +1205,8 @@ window.addEventListener('DOMContentLoaded', () => {
     else { currentProfile = null; }
     updateHeaderAuth();
   });
-  // 초기 history 상태 설정
-  history.replaceState({ view: 'list' }, '', location.pathname);
+  // 초기 history 상태 설정 — 관리자 모드면 ?mode=admin 유지
+  history.replaceState({ view: 'list' }, '', location.pathname + (isAdminMode ? '?mode=admin' : ''));
 
   // 브라우저 뒤로가기/앞으로가기 처리
   window.addEventListener('popstate', function(e) {
@@ -1254,7 +1258,9 @@ function showView(name, pushState = true) {
   window.scrollTo(0, 0);
   if (pushState) {
     const state = { view: name, drugId: name === 'detail' && currentDrug ? currentDrug.id : null };
-    history.pushState(state, '', location.pathname + (name === 'detail' && currentDrug ? '?drug=' + currentDrug.id : ''));
+    const _adminQ = isAdminMode ? '?mode=admin' : '';
+    const _drugQ  = name === 'detail' && currentDrug ? (isAdminMode ? '&drug=' : '?drug=') + currentDrug.id : '';
+    history.pushState(state, '', location.pathname + _adminQ + _drugQ);
   }
   if (name === 'settings') { loadSettingsDrugList(); loadMfdsKeyInput(); renderMfrUrlEditor(); }
 }
@@ -2407,13 +2413,11 @@ function updateHeaderAuth() {
     if (noticebar && noticeMsg) {
       const hasKey = !!(localStorage.getItem('_mfdsApiKey') || '').trim();
       if (!hasKey) {
-        noticeMsg.textContent = '식약처 API 키가 등록되지 않았습니다. 약품 검색을 사용하려면 API 키를 입력해주세요.';
-        noticebar.classList.remove('hidden');
+        noticeMsg.textContent = '식약처 API 키가 등록되지 않았습니다. 설정에서 API 키를 입력해주세요.';
       } else {
         noticeMsg.textContent = '관리자 기능이 활성화됐습니다.';
-        noticebar.classList.remove('hidden');
-        setTimeout(() => noticebar.classList.add('hidden'), 3000);
       }
+      noticebar.classList.remove('hidden');
     }
   } else {
     if (adminBadge) adminBadge.classList.add('hidden');
@@ -2510,6 +2514,16 @@ function submitAdminPwGate() {
     if (errEl) errEl.textContent = 'PIN이 틀렸습니다';
     setTimeout(function(){ dots.forEach(function(d){ d.style.background='#e2e8f0'; }); }, 600);
   }
+}
+
+function exitAdminMode() {
+  if (!confirm('관리자 모드를 해제하시겠어요? 일반 모드로 전환됩니다.')) return;
+  localStorage.removeItem('boardAdminVerified');
+  isAdminMode = false;
+  updateHeaderAuth();
+  // URL에서 ?mode=admin 제거
+  history.replaceState({ view: 'list' }, '', location.pathname);
+  showToast('관리자 모드가 해제됐습니다.');
 }
 
 function changeAdminPw() {
