@@ -82,6 +82,7 @@
     <div id="cart-items-list"></div>
     <div style="padding:14px 0 20px;display:flex;flex-direction:column;gap:8px;">
       <button onclick="batchDownloadCart()" style="background:#0f766e;color:white;border:none;border-radius:14px;padding:14px;font-size:15px;font-weight:800;cursor:pointer;width:100%;">📥 전체 키오스크에 가져가기</button>
+      <button onclick="openPopLabelFromCart()" style="background:#fffbeb;color:#92400e;border:1.5px solid #fcd34d;border-radius:14px;padding:12px;font-size:14px;font-weight:800;cursor:pointer;width:100%;">🏷 POP 라벨 인쇄</button>
       <button onclick="closeCartPanel()" style="background:#f1f5f9;color:#64748b;border:none;border-radius:14px;padding:12px;font-size:13px;font-weight:700;cursor:pointer;width:100%;">닫기</button>
     </div>
   </div>
@@ -1467,7 +1468,6 @@ function renderVersions(versions) {
             class="cart-btn-add px-3 py-2 text-xs ${boardCart.some(c=>c.versionId===v.id)?'in-cart':''}">
             ${boardCart.some(c=>c.versionId===v.id) ? '담김' : '🛒 장바구니'}
           </button>
-          <button onclick="openPopLabel(${JSON.stringify({drug:currentDrug,version:v}).replace(/"/g,'&quot;')})" class="px-3 py-2 text-xs rounded-lg bg-amber-50 text-amber-700 border border-amber-200 font-semibold hover:bg-amber-100 transition-all">🏷 POP 라벨</button>
           <button onclick="copyVersionToNew('${v.id}')" class="btn-secondary px-3 py-2 text-xs">✏️ 토대로 내 버전</button>
           ${(isOwner || isAdminMode) ? `
             <button onclick="deleteVersion('${v.id}')" class="px-3 py-2 text-xs rounded-lg bg-red-50 text-red-500 border border-red-100 cursor-pointer font-semibold hover:bg-red-100 transition-all">🗑 삭제</button>
@@ -4402,169 +4402,90 @@ function openKioskBatch(baseUrl, encoded) {
 /* ══════════════════════════════════════
    🏷 POP 라벨 인쇄
 ══════════════════════════════════════ */
-function openPopLabel(data) {
-  const drug = data.drug || {};
-  const v    = data.version || {};
-  const kioskUrl1 = localStorage.getItem('_kioskUrl1') || KIOSK_URLS.shop1 || '';
+function openPopLabelFromCart() {
+  closeCartPanel();
+  if (!boardCart.length) { showToast('장바구니에 약품을 먼저 담아주세요'); return; }
+  openPopLabel(boardCart);
+}
 
-  // QR 코드용 URL (키오스크 1호점 링크)
-  const qrData = kioskUrl1 || 'https://real0741-web.github.io/local-pharmacy/';
+function openPopLabel(items) {
+  if (!Array.isArray(items) || !items.length) { showToast('선택된 약품이 없습니다'); return; }
+  const kioskUrl = (typeof KIOSK_URLS !== 'undefined' && KIOSK_URLS.shop1) || localStorage.getItem('_kioskUrl1') || 'https://real0741-web.github.io/local-pharmacy/';
 
   const modal = document.createElement('div');
   modal.id = 'pop-label-modal';
   modal.className = 'fixed inset-0 z-[500] bg-black/60 flex items-center justify-center p-4';
   modal.innerHTML = `
-    <div class="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[90vh] flex flex-col">
-      <!-- 헤더 -->
+    <div class="bg-white rounded-2xl shadow-2xl w-full max-w-3xl max-h-[92vh] flex flex-col">
       <div class="flex items-center justify-between p-4 border-b border-slate-100 shrink-0">
         <div>
-          <div class="font-extrabold text-slate-800 text-base">🏷 POP 라벨 미리보기</div>
-          <div class="text-xs text-slate-400 mt-0.5">${drug.canonical_name || ''}</div>
+          <div class="font-extrabold text-slate-800 text-base">🏷 POP 라벨 인쇄</div>
+          <div class="text-xs text-slate-400 mt-0.5">${items.length}개 약품 · A4 한 장에 6칸 배치</div>
         </div>
         <div class="flex gap-2">
           <button onclick="printPopLabel()" class="px-4 py-2 rounded-xl bg-teal-600 text-white text-sm font-bold hover:bg-teal-700 transition-all">🖨 인쇄</button>
-          <button onclick="document.getElementById('pop-label-modal').remove()" class="w-8 h-8 rounded-full bg-slate-100 text-slate-500 text-sm flex items-center justify-center">✕</button>
+          <button onclick="document.getElementById('pop-label-modal').remove()" class="w-8 h-8 rounded-full bg-slate-100 text-slate-500 flex items-center justify-center">✕</button>
         </div>
       </div>
-
-      <!-- 라벨 타입 선택 -->
-      <div class="flex gap-2 p-4 border-b border-slate-50 shrink-0">
-        <button onclick="switchLabelType('a4')" id="ltype-a4" class="flex-1 py-2 text-xs font-bold rounded-xl bg-teal-600 text-white transition-all">📄 A4 인쇄 (6칸)</button>
-        <button onclick="switchLabelType('tag')" id="ltype-tag" class="flex-1 py-2 text-xs font-bold rounded-xl bg-slate-100 text-slate-600 transition-all">🏷 가격 태그</button>
-        <button onclick="switchLabelType('sns')" id="ltype-sns" class="flex-1 py-2 text-xs font-bold rounded-xl bg-slate-100 text-slate-600 transition-all">📱 SNS 카드</button>
-      </div>
-
-      <!-- 가격 입력 -->
-      <div class="flex items-center gap-3 px-4 py-2.5 border-b border-slate-50 bg-slate-50 shrink-0">
-        <span class="text-xs font-bold text-slate-500">💰 판매가</span>
-        <input id="pop-price-input" type="number" placeholder="예: 12000" value=""
-          oninput="refreshPopPreview()"
-          class="w-32 px-3 py-1.5 text-sm border border-slate-200 rounded-lg font-bold text-teal-700"/>
-        <span class="text-xs text-slate-400">원 · 0이면 가격란 숨김</span>
-      </div>
-
-      <!-- 미리보기 영역 -->
-      <div id="pop-preview-area" class="flex-1 overflow-auto p-4 bg-slate-50">
-        <!-- JS로 렌더링 -->
-      </div>
+      <div id="pop-preview-area" class="flex-1 overflow-auto p-5 bg-slate-50"></div>
     </div>`;
   document.body.appendChild(modal);
   modal.addEventListener('click', e => { if (e.target === modal) modal.remove(); });
-
-  // 현재 데이터 저장
-  window._popLabelData = { drug, version: v, qrData };
-  window._popLabelType = 'a4';
-  refreshPopPreview();
-}
-
-function switchLabelType(type) {
-  window._popLabelType = type;
-  ['a4','tag','sns'].forEach(t => {
-    const btn = document.getElementById('ltype-' + t);
-    if (!btn) return;
-    btn.className = t === type
-      ? 'flex-1 py-2 text-xs font-bold rounded-xl bg-teal-600 text-white transition-all'
-      : 'flex-1 py-2 text-xs font-bold rounded-xl bg-slate-100 text-slate-600 transition-all';
-  });
+  window._popItems    = items;
+  window._popKioskUrl = kioskUrl;
   refreshPopPreview();
 }
 
 function refreshPopPreview() {
-  const area  = document.getElementById('pop-preview-area');
-  if (!area || !window._popLabelData) return;
-  const { drug, version: v, qrData } = window._popLabelData;
-  const type  = window._popLabelType || 'a4';
-  const price = parseInt(document.getElementById('pop-price-input')?.value || '0') || 0;
-  const priceStr = price > 0 ? price.toLocaleString() + '원' : '';
+  const area = document.getElementById('pop-preview-area');
+  if (!area || !window._popItems) return;
+  const items    = window._popItems;
+  const kioskUrl = window._popKioskUrl || '';
+  const qrSrc    = 'https://api.qrserver.com/v1/create-qr-code/?size=100x100&data=' + encodeURIComponent(kioskUrl);
 
-  const name     = drug.canonical_name || '';
-  const emoji    = drug.emoji || '💊';
-  const mfr      = drug.manufacturer_name || '';
-  const tagline  = v.efficacy || '';
-  const note     = v.pharmacist_note || '';
-  const imgUrl   = v.image_url || drug.best_image_url || '';
-  const qrSrc    = `https://api.qrserver.com/v1/create-qr-code/?size=80x80&data=${encodeURIComponent(qrData)}`;
-
-  // ── A4 인쇄용 (6칸) ──────────────────────────
-  if (type === 'a4') {
-    const card = (n) => `
-      <div style="width:88mm;height:56mm;border:1px solid #e2e8f0;border-radius:8px;padding:8px 10px;
-                  display:flex;flex-direction:column;justify-content:space-between;background:#fff;
-                  box-sizing:border-box;font-family:'Noto Sans KR',sans-serif;page-break-inside:avoid;">
-        <div style="display:flex;align-items:flex-start;gap:6px;">
-          ${imgUrl ? `<img src="${imgUrl}" style="width:36px;height:36px;object-fit:cover;border-radius:6px;flex-shrink:0;" onerror="this.style.display='none'"/>` : `<span style="font-size:28px;line-height:1">${emoji}</span>`}
+  const makeCard = (item) => {
+    const name    = item.name || item.canonical_name || '';
+    const emoji   = item.emoji || '💊';
+    const cat     = item.category || '';
+    const tagline = item.efficacy || '';
+    const note    = item.pharmacistNote || item.pharmacist_note || '';
+    const imgUrl  = item.imageUrl || item.best_image_url || '';
+    return `
+      <div style="border:1.5px solid #cbd5e1;border-radius:10px;padding:12px 14px;background:#fff;
+                  display:flex;flex-direction:column;gap:7px;box-sizing:border-box;page-break-inside:avoid;">
+        <div style="display:flex;align-items:flex-start;gap:9px;">
+          <div style="flex-shrink:0;">
+            ${imgUrl
+              ? '<img src="' + imgUrl + '" style="width:48px;height:48px;object-fit:cover;border-radius:8px;" onerror="this.outerHTML='<span style=font-size:36px;line-height:1>' + emoji + '</span>'"/>'
+              : '<span style="font-size:36px;line-height:1;">' + emoji + '</span>'}
+          </div>
           <div style="flex:1;min-width:0;">
-            <div style="font-size:11px;font-weight:900;color:#1e293b;line-height:1.3;word-break:keep-all;">${name}</div>
-            <div style="font-size:8.5px;color:#64748b;margin-top:1px;">${mfr}</div>
+            <div style="font-size:14px;font-weight:900;color:#0f172a;line-height:1.35;word-break:keep-all;">' + name + '</div>
+            ${cat ? '<div style="font-size:10px;color:#64748b;margin-top:2px;font-weight:600;">' + cat + '</div>' : ''}
           </div>
-          <img src="${qrSrc}" style="width:34px;height:34px;flex-shrink:0;" title="키오스크 QR"/>
+          <img src="${qrSrc}" style="width:44px;height:44px;flex-shrink:0;border-radius:4px;"/>
         </div>
-        ${tagline ? `<div style="font-size:8.5px;color:#0f766e;font-weight:700;background:#f0fdf4;padding:3px 6px;border-radius:4px;line-height:1.4;word-break:keep-all;">${tagline}</div>` : ''}
-        ${note ? `<div style="font-size:7.5px;color:#92400e;background:#fffbeb;padding:3px 6px;border-radius:4px;line-height:1.4;word-break:keep-all;">💬 ${note}</div>` : ''}
-        <div style="display:flex;align-items:center;justify-content:space-between;border-top:1px solid #f1f5f9;padding-top:4px;">
-          <div style="font-size:7px;color:#94a3b8;">📱 QR 스캔 → 키오스크 주문</div>
-          ${priceStr ? `<div style="font-size:15px;font-weight:900;color:#0f766e;">${priceStr}</div>` : ''}
-        </div>
-      </div>`;
-    area.innerHTML = `
-      <div style="background:#fff;padding:12px;border-radius:10px;box-shadow:0 1px 4px rgba(0,0,0,0.07);">
-        <div style="font-size:10px;color:#94a3b8;margin-bottom:8px;text-align:center;">A4 인쇄 시 6칸 배치 · 가위로 잘라서 사용</div>
-        <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:8px;">
-          ${Array(6).fill(card(name)).join('')}
+        ${tagline ? '<div style="font-size:11.5px;font-weight:700;color:#0f766e;background:#f0fdf4;padding:5px 8px;border-radius:6px;line-height:1.45;word-break:keep-all;">' + tagline + '</div>' : ''}
+        ${note ? '<div style="font-size:10.5px;color:#92400e;background:#fffbeb;border-left:3px solid #fbbf24;padding:5px 8px;border-radius:0 6px 6px 0;line-height:1.5;word-break:keep-all;">' + note + '</div>' : ''}
+        <div style="border-top:1px solid #f1f5f9;padding-top:5px;margin-top:auto;">
+          <div style="font-size:9px;color:#94a3b8;">📱 QR 스캔 → 키오스크 주문</div>
         </div>
       </div>`;
+  };
 
-  // ── 소형 가격 태그 ──────────────────────────
-  } else if (type === 'tag') {
-    area.innerHTML = `
-      <div style="display:flex;flex-wrap:wrap;gap:10px;justify-content:center;">
-        ${Array(4).fill(`
-          <div style="width:64mm;height:38mm;border:2px solid #0f766e;border-radius:8px;padding:8px;
-                      display:flex;flex-direction:column;justify-content:space-between;background:#fff;
-                      font-family:'Noto Sans KR',sans-serif;box-sizing:border-box;">
-            <div style="font-size:10px;font-weight:900;color:#1e293b;word-break:keep-all;line-height:1.3;">${emoji} ${name}</div>
-            <div style="font-size:8px;color:#0f766e;font-weight:700;">${tagline ? tagline.slice(0,30) : ''}</div>
-            <div style="display:flex;align-items:flex-end;justify-content:space-between;">
-              <img src="${qrSrc}" style="width:28px;height:28px;"/>
-              ${priceStr ? `<div style="font-size:20px;font-weight:900;color:#0f766e;line-height:1;">${priceStr}</div>` : '<div style="font-size:9px;color:#94a3b8;">가격 미입력</div>'}
-            </div>
-          </div>`).join('')}
-      </div>`;
-
-  // ── SNS 카드 ──────────────────────────
-  } else if (type === 'sns') {
-    area.innerHTML = `
-      <div style="display:flex;justify-content:center;">
-        <div style="width:300px;border-radius:16px;overflow:hidden;background:linear-gradient(135deg,#f0fdf4,#ecfdf5);
-                    border:1.5px solid #6ee7b7;font-family:'Noto Sans KR',sans-serif;box-shadow:0 4px 20px rgba(0,0,0,0.1);">
-          ${imgUrl ? `<img src="${imgUrl}" style="width:100%;height:140px;object-fit:cover;"/>` : `<div style="width:100%;height:100px;display:flex;align-items:center;justify-content:center;font-size:56px;">${emoji}</div>`}
-          <div style="padding:16px;">
-            <div style="font-size:16px;font-weight:900;color:#1e293b;margin-bottom:4px;">${name}</div>
-            <div style="font-size:11px;color:#64748b;margin-bottom:10px;">${mfr}</div>
-            ${tagline ? `<div style="font-size:12px;color:#0f766e;font-weight:700;background:#fff;padding:8px;border-radius:8px;margin-bottom:8px;line-height:1.5;">${tagline}</div>` : ''}
-            ${note ? `<div style="font-size:11px;color:#92400e;background:#fffbeb;padding:8px;border-radius:8px;margin-bottom:10px;line-height:1.5;">💬 ${note}</div>` : ''}
-            <div style="display:flex;align-items:center;justify-content:space-between;padding-top:10px;border-top:1px solid #a7f3d0;">
-              <div style="display:flex;align-items:center;gap:8px;">
-                <img src="${qrSrc}" style="width:44px;height:44px;border-radius:6px;"/>
-                <div style="font-size:9px;color:#64748b;">📱 QR 스캔<br/>키오스크 주문</div>
-              </div>
-              ${priceStr ? `<div style="font-size:24px;font-weight:900;color:#0f766e;">${priceStr}</div>` : ''}
-            </div>
-          </div>
-        </div>
-      </div>`;
-  }
+  const pages = [];
+  for (let i = 0; i < items.length; i += 6) pages.push(items.slice(i, i + 6));
+  area.innerHTML = pages.map((page, pi) =>
+    '<div style="background:#fff;padding:16px;border-radius:12px;box-shadow:0 1px 6px rgba(0,0,0,.08);margin-bottom:16px;">' +
+    '<div style="font-size:10px;color:#94a3b8;text-align:center;margin-bottom:10px;">' +
+    (pages.length > 1 ? (pi+1) + ' / ' + pages.length + ' 페이지 · ' : '') + 'A4 인쇄 · 가위로 잘라서 사용</div>' +
+    '<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">' +
+    page.map(makeCard).join('') + '</div></div>'
+  ).join('');
 }
 
-function printPopLabel() {
   const area = document.getElementById('pop-preview-area');
   if (!area) return;
   const type = window._popLabelType || 'a4';
   const win  = window.open('', '_blank', 'width=900,height=700');
-  win.document.write('<!DOCTYPE html><html><head><meta charset="UTF-8"><title>오더팜 POP 라벨</title><style>*{box-sizing:border-box;margin:0;padding:0;}body{font-family:Apple SD Gothic Neo,Malgun Gothic,sans-serif;background:#fff;}@media print{@page{size:A4;margin:10mm;}body{margin:0;}}</style></head><body>' + area.innerHTML + '</body></html>');
-  win.document.close();
-  setTimeout(function(){ win.focus(); win.print(); }, 600);
-}
-</script>
-</body>
-</html>
+  win.document.write('<!DOCTYPE html><html><head><meta charset="UTF-8"><title>오더팜 POP 라벨</title><style>*{box-sizing:border-box;margin:0;padding:0;}body{font-family:Apple SD Gothic Neo,Malgun Gothic,sans-serif;background:#fff;}@media print{@page{size:A4;margin:10mm;}body{margin:0;}}</style></head><body>' + a
