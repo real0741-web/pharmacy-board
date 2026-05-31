@@ -4410,7 +4410,79 @@ function openPopLabelFromCart() {
 
 function openPopLabel(items) {
   if (!Array.isArray(items) || !items.length) { showToast('선택된 약품이 없습니다'); return; }
-  const kioskUrl = (typeof KIOSK_URLS !== 'undefined' && KIOSK_URLS.shop1) || localStorage.getItem('_kioskUrl1') || 'https://real0741-web.github.io/local-pharmacy/';
+  var kioskUrl = (typeof KIOSK_URLS !== 'undefined' && KIOSK_URLS.shop1) || localStorage.getItem('_kioskUrl1') || 'https://real0741-web.github.io/local-pharmacy/';
+  var modal = document.createElement('div');
+  modal.id = 'pop-label-modal';
+  modal.style.cssText = 'position:fixed;inset:0;z-index:500;background:rgba(0,0,0,.6);display:flex;align-items:center;justify-content:center;padding:16px;';
+  modal.innerHTML =
+    '<div style="background:#fff;border-radius:16px;box-shadow:0 8px 40px rgba(0,0,0,.2);width:100%;max-width:800px;max-height:92vh;display:flex;flex-direction:column;">' +
+      '<div style="display:flex;align-items:center;justify-content:space-between;padding:16px 20px;border-bottom:1px solid #f1f5f9;">' +
+        '<div><div style="font-size:16px;font-weight:900;color:#1e293b;">🏷 POP 라벨 인쇄</div>' +
+        '<div style="font-size:11px;color:#94a3b8;margin-top:2px;">' + items.length + '개 약품</div></div>' +
+        '<div style="display:flex;gap:8px;">' +
+          '<button onclick="printPopLabel()" style="background:#0f766e;color:#fff;border:none;border-radius:10px;padding:8px 16px;font-size:13px;font-weight:800;cursor:pointer;">🖨 인쇄</button>' +
+          '<button onclick="document.getElementById(\'pop-label-modal\').remove()" style="width:32px;height:32px;border-radius:50%;background:#f1f5f9;border:none;cursor:pointer;font-size:14px;">✕</button>' +
+        '</div>' +
+      '</div>' +
+      '<div id="pop-preview-area" style="flex:1;overflow:auto;padding:20px;background:#f8fafc;"></div>' +
+    '</div>';
+  document.body.appendChild(modal);
+  modal.addEventListener('click', function(e) { if (e.target === modal) modal.remove(); });
+  window._popItems    = items;
+  window._popKioskUrl = kioskUrl;
+  refreshPopPreview();
+}
+
+function refreshPopPreview() {
+  var area = document.getElementById('pop-preview-area');
+  if (!area || !window._popItems) return;
+  var items    = window._popItems;
+  var kioskUrl = window._popKioskUrl || '';
+  var qrSrc    = 'https://api.qrserver.com/v1/create-qr-code/?size=100x100&data=' + encodeURIComponent(kioskUrl);
+  function makeCard(item) {
+    var name    = item.name || item.canonical_name || '';
+    var emoji   = item.emoji || '💊';
+    var cat     = item.category || '';
+    var tagline = item.efficacy || '';
+    var note    = item.pharmacistNote || item.pharmacist_note || '';
+    var imgUrl  = item.imageUrl || item.best_image_url || '';
+    var imgHtml = imgUrl
+      ? '<img src="' + imgUrl + '" style="width:52px;height:52px;object-fit:cover;border-radius:8px;flex-shrink:0;" onerror="this.style.display=\'none\'">'
+      : '<span style="font-size:40px;line-height:1;flex-shrink:0;">' + emoji + '</span>';
+    var tagHtml  = tagline ? '<div style="font-size:12px;font-weight:700;color:#0f766e;background:#f0fdf4;padding:5px 9px;border-radius:6px;line-height:1.5;word-break:keep-all;">' + tagline + '</div>' : '';
+    var noteHtml = note    ? '<div style="font-size:11px;color:#92400e;background:#fffbeb;border-left:3px solid #fbbf24;padding:5px 9px;border-radius:0 6px 6px 0;line-height:1.5;word-break:keep-all;">' + note + '</div>' : '';
+    var catHtml  = cat     ? '<div style="font-size:10px;color:#64748b;margin-top:2px;font-weight:600;">' + cat + '</div>' : '';
+    return '<div style="border:1.5px solid #cbd5e1;border-radius:10px;padding:13px 15px;background:#fff;display:flex;flex-direction:column;gap:8px;box-sizing:border-box;">' +
+      '<div style="display:flex;align-items:flex-start;gap:10px;">' + imgHtml +
+        '<div style="flex:1;min-width:0;"><div style="font-size:15px;font-weight:900;color:#0f172a;line-height:1.35;word-break:keep-all;">' + name + '</div>' + catHtml + '</div>' +
+        '<img src="' + qrSrc + '" style="width:46px;height:46px;flex-shrink:0;border-radius:4px;">' +
+      '</div>' + tagHtml + noteHtml +
+      '<div style="border-top:1px solid #f1f5f9;padding-top:5px;"><div style="font-size:9px;color:#94a3b8;">📱 QR 스캔 → 키오스크 주문</div></div>' +
+    '</div>';
+  }
+  var pages = [];
+  for (var i = 0; i < items.length; i += 6) pages.push(items.slice(i, i + 6));
+  area.innerHTML = pages.map(function(page, pi) {
+    return '<div style="background:#fff;padding:16px;border-radius:12px;box-shadow:0 1px 6px rgba(0,0,0,.08);margin-bottom:16px;">' +
+      '<div style="font-size:10px;color:#94a3b8;text-align:center;margin-bottom:10px;">' +
+      (pages.length > 1 ? (pi+1) + ' / ' + pages.length + ' 페이지 · ' : '') + 'A4 인쇄 · 가위로 잘라서 사용</div>' +
+      '<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">' + page.map(makeCard).join('') + '</div></div>';
+  }).join('');
+}
+
+function printPopLabel() {
+  var area = document.getElementById('pop-preview-area');
+  if (!area) return;
+  var win = window.open('', '_blank', 'width=900,height=700');
+  win.document.write('<!DOCTYPE html><html><head><meta charset="UTF-8"><title>오더팜 POP 라벨</title>' +
+    '<style>*{box-sizing:border-box;margin:0;padding:0;}body{font-family:"Apple SD Gothic Neo","Malgun Gothic",sans-serif;background:#fff;}' +
+    '@media print{@page{size:A4;margin:10mm;}body{margin:0;}}</style></head><body>' + area.innerHTML + '</body></html>');
+  win.document.close();
+  setTimeout(function(){ win.focus(); win.print(); }, 600);
+}
+</script>
+</body>
+</html>
 
   const modal = document.createElement('div');
   modal.id = 'pop-label-modal';
