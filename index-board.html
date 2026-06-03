@@ -2984,6 +2984,7 @@ async function callAnalyzeProduct(drugName, imageUrl) {
       productName: drugName,
       imageData:   imageUrl || '',
       categories:  BOARD_CATEGORIES,
+      mfdsKey:     getBoardMfdsKey(), // 건강기능식품·의약품 DB 검색용
     }),
     signal: AbortSignal.timeout(28000),
   });
