@@ -178,11 +178,27 @@
       <span id="bulk-selected-count" class="text-sm font-bold flex-1 text-center">
         0개 선택됨
       </span>
+      <select id="bulk-dtype-select"
+        class="text-xs font-bold bg-white/20 text-white border border-white/30 rounded-lg px-2 py-1.5"
+        style="background:rgba(255,255,255,0.15)">
+        <option value="일반의약품" style="color:#1e293b">🏥 일반의약품</option>
+        <option value="건강기능식품" style="color:#1e293b">🌿 건강기능식품</option>
+        <option value="의약외품" style="color:#1e293b">🧴 의약외품</option>
+        <option value="의료기기" style="color:#1e293b">🩺 의료기기</option>
+        <option value="화장품" style="color:#1e293b">✨ 화장품</option>
+        <option value="기타상품" style="color:#1e293b">📦 기타상품</option>
+      </select>
+      <button onclick="executeBulkTypeChange()"
+        id="bulk-type-exec-btn"
+        class="text-sm font-extrabold bg-yellow-400 text-yellow-900 px-4 py-1.5 rounded-lg hover:bg-yellow-300 transition-all disabled:opacity-40"
+        disabled>
+        ✏️ 종류 변경
+      </button>
       <button onclick="executeBulkDelete()"
         id="bulk-delete-exec-btn"
         class="text-sm font-extrabold bg-white text-red-600 px-5 py-1.5 rounded-lg hover:bg-red-50 transition-all disabled:opacity-40"
         disabled>
-        🗑 선택 삭제
+        🗑 삭제
       </button>
       <button onclick="toggleBulkDeleteMode()"
         class="text-xs font-bold bg-white/20 hover:bg-white/30 px-3 py-1.5 rounded-lg transition-all">
@@ -219,6 +235,9 @@
       <button class="chip"        style="font-size:11px;padding:4px 11px;" data-dtype="일반의약품"  onclick="setDrugTypeFilter('일반의약품',this)">🏥 일반의약품</button>
       <button class="chip"        style="font-size:11px;padding:4px 11px;" data-dtype="건강기능식품" onclick="setDrugTypeFilter('건강기능식품',this)">🌿 건강기능식품</button>
       <button class="chip"        style="font-size:11px;padding:4px 11px;" data-dtype="의약외품"   onclick="setDrugTypeFilter('의약외품',this)">🧴 의약외품</button>
+      <button class="chip"        style="font-size:11px;padding:4px 11px;" data-dtype="의료기기"   onclick="setDrugTypeFilter('의료기기',this)">🩺 의료기기</button>
+      <button class="chip"        style="font-size:11px;padding:4px 11px;" data-dtype="화장품"     onclick="setDrugTypeFilter('화장품',this)">✨ 화장품</button>
+      <button class="chip"        style="font-size:11px;padding:4px 11px;" data-dtype="기타상품"   onclick="setDrugTypeFilter('기타상품',this)">📦 기타상품</button>
     </div>
   </div>
 
@@ -309,6 +328,22 @@
         <div class="flex-1"></div>
         <button onclick="openVersionUpload()" id="add-version-btn"
           class="hidden btn-primary px-4 py-2 text-sm">+ 내 버전 등록</button>
+        <!-- 관리자: 약품 종류 변경 -->
+        <div id="detail-drug-type-wrap" class="hidden flex items-center gap-1.5">
+          <select id="detail-drug-type-sel"
+            class="text-xs border border-slate-200 rounded-lg px-2 py-1.5 font-semibold text-slate-600 bg-white">
+            <option value="일반의약품">🏥 일반의약품</option>
+            <option value="건강기능식품">🌿 건강기능식품</option>
+            <option value="의약외품">🧴 의약외품</option>
+            <option value="의료기기">🩺 의료기기</option>
+            <option value="화장품">✨ 화장품</option>
+            <option value="기타상품">📦 기타상품</option>
+          </select>
+          <button onclick="saveDrugType()"
+            class="text-xs font-bold px-3 py-1.5 rounded-lg bg-teal-50 text-teal-700 border border-teal-200 hover:bg-teal-100 transition-all">
+            저장
+          </button>
+        </div>
         <button onclick="confirmDeleteDrug()" id="delete-drug-btn"
           class="hidden btn-secondary px-3 py-2 text-sm text-red-500 hover:bg-red-50 border border-red-200">🗑 삭제</button>
       </div>
@@ -913,6 +948,15 @@
             </label>
             <label class="flex items-center gap-1.5 cursor-pointer">
               <input type="radio" name="reg-drug-type" value="의약외품" class="accent-teal-600"/> <span class="text-sm">🧴 의약외품</span>
+            </label>
+            <label class="flex items-center gap-1.5 cursor-pointer">
+              <input type="radio" name="reg-drug-type" value="의료기기" class="accent-teal-600"/> <span class="text-sm">🩺 의료기기</span>
+            </label>
+            <label class="flex items-center gap-1.5 cursor-pointer">
+              <input type="radio" name="reg-drug-type" value="화장품" class="accent-teal-600"/> <span class="text-sm">✨ 화장품</span>
+            </label>
+            <label class="flex items-center gap-1.5 cursor-pointer">
+              <input type="radio" name="reg-drug-type" value="기타상품" class="accent-teal-600"/> <span class="text-sm">📦 기타상품</span>
             </label>
           </div>
         </div>
@@ -1542,6 +1586,17 @@ function openDrugDetail(d, pushState = true) {
   if (currentUser) addBtn.classList.remove('hidden');
   else addBtn.classList.add('hidden');
 
+  // 관리자: drug_type 수정 UI
+  const dtypeWrap = document.getElementById('detail-drug-type-wrap');
+  if (dtypeWrap) {
+    if (isAdminMode) {
+      const sel = document.getElementById('detail-drug-type-sel');
+      if (sel) sel.value = d.drug_type || '일반의약품';
+      dtypeWrap.classList.remove('hidden');
+    } else {
+      dtypeWrap.classList.add('hidden');
+    }
+  }
   // 관리자 삭제 버튼 (상태 항상 초기화)
   const delBtn = document.getElementById('delete-drug-btn');
   delBtn.disabled = false;
@@ -1988,6 +2043,56 @@ async function deleteVersion(versionId) {
 }
 
 /* ── 약품 전체 삭제 (관리자 전용) ─────────────────────── */
+/* ── 개별 drug_type 저장 ── */
+async function saveDrugType() {
+  if (!currentDrug) return;
+  const sel = document.getElementById('detail-drug-type-sel');
+  const newType = sel?.value;
+  if (!newType) return;
+  try {
+    const res = await fetch(WORKER_URL + '/?action=boardUpdateDrugType', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ drugIds: [currentDrug.id], drug_type: newType }),
+    });
+    const json = await res.json();
+    if (!json.ok) throw new Error(json.error);
+    currentDrug.drug_type = newType;
+    // 목록 캐시 업데이트
+    const d = drugs.find(x => x.id === currentDrug.id);
+    if (d) d.drug_type = newType;
+    showToast('✅ 종류 변경 완료: ' + newType);
+  } catch(e) { showToast('❌ 변경 실패: ' + e.message); }
+}
+
+/* ── 일괄 drug_type 변경 ── */
+async function executeBulkTypeChange() {
+  const cnt = _bulkSelected.size;
+  if (cnt === 0) return;
+  const sel = document.getElementById('bulk-dtype-select');
+  const newType = sel?.value;
+  if (!confirm(`선택한 약품 ${cnt}개의 종류를 "${newType}"으로 변경할까요?`)) return;
+  const btn = document.getElementById('bulk-type-exec-btn');
+  btn.disabled = true; btn.textContent = '변경 중...';
+  try {
+    const res = await fetch(WORKER_URL + '/?action=boardUpdateDrugType', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ drugIds: [..._bulkSelected], drug_type: newType }),
+    });
+    const json = await res.json();
+    if (!json.ok) throw new Error(json.error);
+    // 캐시 업데이트
+    _bulkSelected.forEach(id => { const d = drugs.find(x => x.id === id); if (d) d.drug_type = newType; });
+    showToast(`✅ ${cnt}개 → "${newType}" 변경 완료`);
+    toggleBulkDeleteMode();
+    renderDrugs();
+  } catch(e) {
+    showToast('❌ 변경 실패: ' + e.message);
+    btn.disabled = false; btn.textContent = '✏️ 종류 변경';
+  }
+}
+
 function confirmDeleteDrug() {
   if (!currentDrug) return;
   const name = currentDrug.canonical_name;
@@ -2118,6 +2223,8 @@ function _updateBulkBar() {
   const execBtn = document.getElementById('bulk-delete-exec-btn');
   if (countEl) countEl.textContent = `${cnt}개 선택됨`;
   if (execBtn) execBtn.disabled = (cnt === 0);
+  const typeBtn = document.getElementById('bulk-type-exec-btn');
+  if (typeBtn) typeBtn.disabled = (cnt === 0);
 }
 
 async function executeBulkDelete() {
@@ -4430,99 +4537,4 @@ function showCartKioskSelector(exportList) {
   const s2btn = shop2Url
     ? '<button onclick="openKioskBatch(\'' + shop2Url + '\',\'' + encoded + '\')" class="w-full flex items-center gap-3 px-4 py-3 rounded-xl border-2 border-purple-400 bg-purple-50 hover:bg-purple-100 transition-all text-left"><span class="text-xl">🏪</span><div><div class="font-bold text-purple-800 text-sm">2호점 키오스크</div><div class="text-xs text-slate-400 truncate">' + shop2Url + '</div></div></button>'
     : '<div class="w-full flex items-center gap-3 px-4 py-3 rounded-xl border border-dashed border-slate-200 text-slate-400 text-sm"><span class="text-xl">🏪</span><div><div class="font-semibold text-sm">2호점 키오스크</div><div class="text-xs">설정에서 URL을 등록하세요</div></div></div>';
-  popup.innerHTML = '<div class="bg-white rounded-2xl shadow-2xl w-full max-w-sm p-5 fade-in"><h3 class="font-extrabold text-slate-800 text-base mb-1">📥 장바구니 키오스크로 가져가기</h3><p class="text-xs text-slate-400 mb-4">총 <strong>' + exportList.length + '개</strong> 약품을 어느 키오스크에 추가할까요?</p><div class="space-y-2 mb-4">' + s1btn + s2btn + '</div><button onclick="document.getElementById(\'kiosk-selector-popup\').remove()" class="w-full py-2 rounded-xl bg-slate-100 text-sm text-slate-500 hover:bg-slate-200">취소</button></div>';
-  document.body.appendChild(popup);
-  popup.addEventListener('click', function(e) { if (e.target === popup) popup.remove(); });
-}
-
-function openKioskBatch(baseUrl, encoded) {
-  document.getElementById('kiosk-selector-popup')?.remove();
-  closeCartPanel();
-  const url = baseUrl.replace(/\/$/, '') + '/?mode=admin&importDrugs=' + encoded;
-  window.open(url, '_blank');
-}
-
-/* ══════════════════════════════════════
-   🏷 POP 라벨 인쇄
-══════════════════════════════════════ */
-function openPopLabelFromCart() {
-  closeCartPanel();
-  if (!boardCart.length) { showToast('장바구니에 약품을 먼저 담아주세요'); return; }
-  openPopLabel(boardCart);
-}
-
-function openPopLabel(items) {
-  if (!Array.isArray(items) || !items.length) { showToast('선택된 약품이 없습니다'); return; }
-  var kioskUrl = (typeof KIOSK_URLS !== 'undefined' && KIOSK_URLS.shop1) || localStorage.getItem('_kioskUrl1') || 'https://real0741-web.github.io/local-pharmacy/';
-  var modal = document.createElement('div');
-  modal.id = 'pop-label-modal';
-  modal.style.cssText = 'position:fixed;inset:0;z-index:500;background:rgba(0,0,0,.6);display:flex;align-items:center;justify-content:center;padding:16px;';
-  modal.innerHTML =
-    '<div style="background:#fff;border-radius:16px;box-shadow:0 8px 40px rgba(0,0,0,.2);width:100%;max-width:800px;max-height:92vh;display:flex;flex-direction:column;">' +
-      '<div style="display:flex;align-items:center;justify-content:space-between;padding:16px 20px;border-bottom:1px solid #f1f5f9;">' +
-        '<div><div style="font-size:16px;font-weight:900;color:#1e293b;">🏷 POP 라벨 인쇄</div>' +
-        '<div style="font-size:11px;color:#94a3b8;margin-top:2px;">' + items.length + '개 약품</div></div>' +
-        '<div style="display:flex;gap:8px;">' +
-          '<button onclick="printPopLabel()" style="background:#0f766e;color:#fff;border:none;border-radius:10px;padding:8px 16px;font-size:13px;font-weight:800;cursor:pointer;">🖨 인쇄</button>' +
-          '<button onclick="document.getElementById(\'pop-label-modal\').remove()" style="width:32px;height:32px;border-radius:50%;background:#f1f5f9;border:none;cursor:pointer;font-size:14px;">✕</button>' +
-        '</div>' +
-      '</div>' +
-      '<div id="pop-preview-area" style="flex:1;overflow:auto;padding:20px;background:#f8fafc;"></div>' +
-    '</div>';
-  document.body.appendChild(modal);
-  modal.addEventListener('click', function(e) { if (e.target === modal) modal.remove(); });
-  window._popItems    = items;
-  window._popKioskUrl = kioskUrl;
-  refreshPopPreview();
-}
-
-function refreshPopPreview() {
-  var area = document.getElementById('pop-preview-area');
-  if (!area || !window._popItems) return;
-  var items    = window._popItems;
-  var kioskUrl = window._popKioskUrl || '';
-  var qrSrc    = 'https://api.qrserver.com/v1/create-qr-code/?size=100x100&data=' + encodeURIComponent(kioskUrl);
-  function makeCard(item) {
-    var name    = item.name || item.canonical_name || '';
-    var emoji   = item.emoji || '💊';
-    var cat     = item.category || '';
-    var tagline = item.efficacy || '';
-    var note    = item.pharmacistNote || item.pharmacist_note || '';
-    var imgUrl  = item.imageUrl || item.best_image_url || '';
-    var imgHtml = imgUrl
-      ? '<img src="' + imgUrl + '" style="width:52px;height:52px;object-fit:cover;border-radius:8px;flex-shrink:0;" onerror="this.style.display=\'none\'">'
-      : '<span style="font-size:40px;line-height:1;flex-shrink:0;">' + emoji + '</span>';
-    var tagHtml  = tagline ? '<div style="font-size:12px;font-weight:700;color:#0f766e;background:#f0fdf4;padding:5px 9px;border-radius:6px;line-height:1.5;word-break:keep-all;">' + tagline + '</div>' : '';
-    var noteHtml = note    ? '<div style="font-size:11px;color:#92400e;background:#fffbeb;border-left:3px solid #fbbf24;padding:5px 9px;border-radius:0 6px 6px 0;line-height:1.5;word-break:keep-all;">' + note + '</div>' : '';
-    var catHtml  = cat     ? '<div style="font-size:10px;color:#64748b;margin-top:2px;font-weight:600;">' + cat + '</div>' : '';
-    return '<div style="border:1.5px solid #cbd5e1;border-radius:10px;padding:13px 15px;background:#fff;display:flex;flex-direction:column;gap:8px;box-sizing:border-box;">' +
-      '<div style="display:flex;align-items:flex-start;gap:10px;">' + imgHtml +
-        '<div style="flex:1;min-width:0;"><div style="font-size:15px;font-weight:900;color:#0f172a;line-height:1.35;word-break:keep-all;">' + name + '</div>' + catHtml + '</div>' +
-        '<img src="' + qrSrc + '" style="width:46px;height:46px;flex-shrink:0;border-radius:4px;">' +
-      '</div>' + tagHtml + noteHtml +
-      '<div style="border-top:1px solid #f1f5f9;padding-top:5px;"><div style="font-size:9px;color:#94a3b8;">📱 QR 스캔 → 키오스크 주문</div></div>' +
-    '</div>';
-  }
-  var pages = [];
-  for (var i = 0; i < items.length; i += 6) pages.push(items.slice(i, i + 6));
-  area.innerHTML = pages.map(function(page, pi) {
-    return '<div style="background:#fff;padding:16px;border-radius:12px;box-shadow:0 1px 6px rgba(0,0,0,.08);margin-bottom:16px;">' +
-      '<div style="font-size:10px;color:#94a3b8;text-align:center;margin-bottom:10px;">' +
-      (pages.length > 1 ? (pi+1) + ' / ' + pages.length + ' 페이지 · ' : '') + 'A4 인쇄 · 가위로 잘라서 사용</div>' +
-      '<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">' + page.map(makeCard).join('') + '</div></div>';
-  }).join('');
-}
-
-function printPopLabel() {
-  var area = document.getElementById('pop-preview-area');
-  if (!area) return;
-  var win = window.open('', '_blank', 'width=900,height=700');
-  win.document.write('<!DOCTYPE html><html><head><meta charset="UTF-8"><title>오더팜 POP 라벨</title>' +
-    '<style>*{box-sizing:border-box;margin:0;padding:0;}body{font-family:"Apple SD Gothic Neo","Malgun Gothic",sans-serif;background:#fff;}' +
-    '@media print{@page{size:A4;margin:10mm;}body{margin:0;}}</style></head><body>' + area.innerHTML + '</body></html>');
-  win.document.close();
-  setTimeout(function(){ win.focus(); win.print(); }, 600);
-}
-</script>
-</body>
-</html>
+  popup.innerHTML 
