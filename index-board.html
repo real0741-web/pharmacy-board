@@ -102,9 +102,10 @@
     </button>
     <div class="flex-1 relative">
       <span class="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-sm pointer-events-none">🔍</span>
-      <input id="search-input" type="search" placeholder="약품명 검색..."
+      <input id="search-input" type="text" placeholder="약품명 검색..."
         class="w-full pl-8 pr-4 py-2 rounded-xl border border-slate-200 bg-slate-50 text-sm focus:bg-white"
-        autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"
+        autocomplete="new-password" autocorrect="off" autocapitalize="off" spellcheck="false"
+        name="drug-search-field"
         oninput="onSearch()"/>
     </div>
     <div id="header-auth" class="shrink-0 flex items-center gap-2"></div>
@@ -211,6 +212,16 @@
     </div>
   </div>
 
+  <!-- 약품 종류 필터 -->
+  <div class="max-w-5xl mx-auto px-4 pt-1.5">
+    <div class="flex gap-2 overflow-x-auto no-scrollbar pb-1.5">
+      <button class="chip active" style="font-size:11px;padding:4px 11px;" data-dtype="all"      onclick="setDrugTypeFilter('all',this)">💊 전체</button>
+      <button class="chip"        style="font-size:11px;padding:4px 11px;" data-dtype="일반의약품"  onclick="setDrugTypeFilter('일반의약품',this)">🏥 일반의약품</button>
+      <button class="chip"        style="font-size:11px;padding:4px 11px;" data-dtype="건강기능식품" onclick="setDrugTypeFilter('건강기능식품',this)">🌿 건강기능식품</button>
+      <button class="chip"        style="font-size:11px;padding:4px 11px;" data-dtype="의약외품"   onclick="setDrugTypeFilter('의약외품',this)">🧴 의약외품</button>
+    </div>
+  </div>
+
   <!-- 기능 태그 필터 -->
   <div class="max-w-5xl mx-auto px-4 pt-1.5">
     <div class="flex gap-2 overflow-x-auto no-scrollbar pb-2">
@@ -228,9 +239,10 @@
   <div class="max-w-5xl mx-auto px-4 pt-1 pb-1">
     <div class="relative">
       <span class="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none">🔍</span>
-      <input id="list-search-input" type="search" placeholder="약품명으로 빠르게 찾기..."
+      <input id="list-search-input" type="text" placeholder="약품명으로 빠르게 찾기..."
         class="w-full pl-9 pr-4 py-2.5 rounded-xl border border-slate-200 bg-white text-sm shadow-sm focus:outline-none focus:border-teal-400 focus:ring-2 focus:ring-teal-100"
-        autocomplete="off" autocorrect="off" spellcheck="false"
+        autocomplete="new-password" autocorrect="off" spellcheck="false"
+        name="drug-list-search-field"
         oninput="onListSearch(this.value)"/>
     </div>
   </div>
@@ -889,6 +901,21 @@
             </select>
           </div>
         </div>
+        <!-- 약품 종류 -->
+        <div>
+          <label class="text-xs font-bold text-slate-500 mb-1 block">약품 종류</label>
+          <div class="flex gap-2">
+            <label class="flex items-center gap-1.5 cursor-pointer">
+              <input type="radio" name="reg-drug-type" value="일반의약품" checked class="accent-teal-600"/> <span class="text-sm">🏥 일반의약품</span>
+            </label>
+            <label class="flex items-center gap-1.5 cursor-pointer">
+              <input type="radio" name="reg-drug-type" value="건강기능식품" class="accent-teal-600"/> <span class="text-sm">🌿 건강기능식품</span>
+            </label>
+            <label class="flex items-center gap-1.5 cursor-pointer">
+              <input type="radio" name="reg-drug-type" value="의약외품" class="accent-teal-600"/> <span class="text-sm">🧴 의약외품</span>
+            </label>
+          </div>
+        </div>
 
         <!-- 한줄 설명 -->
         <div>
@@ -1180,8 +1207,9 @@ let sb = null;
 let currentUser = null;
 let currentProfile = null;
 let drugs = [];
-let currentMfr  = 'all';
-let currentCat  = 'all';
+let currentMfr      = 'all';
+let currentCat      = 'all';
+let currentDrugType = 'all'; // 일반의약품 / 건강기능식품 / 의약외품
 let currentSort = 'downloads';
 let boardCart = JSON.parse(localStorage.getItem('boardCart') || '[]'); // 장바구니
 let searchQuery = '';
@@ -1345,10 +1373,11 @@ async function loadVersions(drugId) {
 function getFiltered() {
   const q = searchQuery.toLowerCase();
   let list = drugs.filter(d => {
-    const mfr = currentMfr === 'all' || d.manufacturer_name === currentMfr;
-    const cat = currentCat === 'all' || d.category === currentCat;
+    const mfr  = currentMfr      === 'all' || d.manufacturer_name === currentMfr;
+    const cat  = currentCat      === 'all' || d.category          === currentCat;
+    const dtype = currentDrugType === 'all' || (d.drug_type || '일반의약품') === currentDrugType;
     const srch = !q || d.canonical_name.toLowerCase().includes(q);
-    return mfr && cat && srch;
+    return mfr && cat && dtype && srch;
   });
   if (currentSort === 'versions')  list = [...list].sort((a,b) => (b.version_count||0)-(a.version_count||0));
   if (currentSort === 'latest')    list = [...list].sort((a,b) => new Date(b.created_at)-new Date(a.created_at));
@@ -1400,6 +1429,7 @@ function renderDrugs() {
         <div class="flex items-start justify-between mb-2">
           <div class="ml-7">${thumbHtml}</div>
           <span class="text-xs bg-slate-100 text-slate-500 font-semibold px-2 py-0.5 rounded-full">${d.category || '기타'}</span>
+          ${d.drug_type && d.drug_type !== '일반의약품' ? `<span class="text-xs font-semibold px-2 py-0.5 rounded-full ml-0.5" style="background:${d.drug_type==='건강기능식품'?'#f0fdf4':'#fef3c7'};color:${d.drug_type==='건강기능식품'?'#166534':'#92400e'}">${d.drug_type==='건강기능식품'?'🌿':'🧴'} ${d.drug_type}</span>` : ''}
         </div>
         <div class="font-bold text-slate-800 text-sm leading-tight mb-1 line-clamp-2">${d.canonical_name}</div>
         <div class="text-xs text-slate-400 mb-2 truncate">${d.manufacturer_name || ''}</div>
@@ -2368,6 +2398,13 @@ function setCatFilter(val, btn) {
   renderDrugs();
 }
 
+function setDrugTypeFilter(val, btn) {
+  currentDrugType = val;
+  document.querySelectorAll('[data-dtype]').forEach(function(b){ b.classList.remove('active'); });
+  btn.classList.add('active');
+  renderDrugs();
+}
+
 function setSort(val, btn) {
   currentSort = val;
   document.querySelectorAll('.sort-btn').forEach(function(b){ b.classList.remove('active'); });
@@ -2737,6 +2774,8 @@ async function regSubmit(continueMode) {
   const emoji    = (document.getElementById('reg-emoji').value    || '💊').trim();
   const cat      = (document.getElementById('reg-cat').value      || '기타').trim();
   const mfr      = (document.getElementById('reg-mfr').value      || '').trim();
+  const drugTypeEl = document.querySelector('input[name="reg-drug-type"]:checked');
+  const drugType = drugTypeEl ? drugTypeEl.value : '일반의약품';
   const efficacy = (document.getElementById('reg-efficacy').value || '').trim();
   const dosage   = (document.getElementById('reg-dosage').value   || '').trim();
   const note     = (document.getElementById('reg-note').value     || '').trim();
@@ -2760,6 +2799,7 @@ async function regSubmit(continueMode) {
           canonical_name:    name,
           emoji:             emoji,
           category:          cat,
+          drug_type:         drugType,
           manufacturer_name: (mfr && mfr !== '기타') ? mfr : '기타',
           func_tags:         tagArr,
         },
