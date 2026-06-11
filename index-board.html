@@ -1803,7 +1803,7 @@ function showKioskSelector(exportData) {
 
 function openKiosk(baseUrl, encoded) {
   document.getElementById('kiosk-selector-popup')?.remove();
-  const url = baseUrl.replace(/\/$/, '') + '/?mode=admin&importDrug=' + encoded;
+  const url = baseUrl.replace(/\/$/, '') + '/?mode=admin&importDrug=' + encodeURIComponent(encoded);
   window.open(url, '_blank');
   showToast('✅ 키오스크가 열렸습니다! PIN 입력 후 편집창이 자동으로 열립니다.');
 }
@@ -4507,7 +4507,7 @@ function showCartKioskSelector(exportList) {
 function openKioskBatch(baseUrl, encoded) {
   document.getElementById('kiosk-selector-popup')?.remove();
   closeCartPanel();
-  const url = baseUrl.replace(/\/$/, '') + '/?mode=admin&importDrugs=' + encoded;
+  const url = baseUrl.replace(/\/$/, '') + '/?mode=admin&importDrugs=' + encodeURIComponent(encoded);
   window.open(url, '_blank');
   showToast('✅ 키오스크가 열렸습니다! PIN 입력 후 약품들이 자동 추가됩니다.');
 }
