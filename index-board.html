@@ -3811,14 +3811,21 @@ function renderCrawledDrugs(drugs) {
       ? '<div style="font-size:10px;color:#0d9488;margin-top:2px;font-style:italic;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">💬 ' + d.pharmacist_note.slice(0, 60) + (d.pharmacist_note.length > 60 ? '...' : '') + '</div>'
       : '';
     var _dt = d.drug_type || '일반의약품';
-    var _dtColors = {'건강기능식품':['#f0fdf4','#166534','🌿'],'의약외품':['#fef3c7','#92400e','🧴'],'의료기기':['#eff6ff','#1e40af','🩺'],'화장품':['#fdf4ff','#7e22ce','✨'],'기타상품':['#f8fafc','#475569','📦'],'전문의약품':['#fee2e2','#b91c1c','💊'],'일반의약품':['#f1f5f9','#475569','💊']};
-    var _dtc = _dtColors[_dt] || _dtColors['일반의약품'];
-    var dtBadge = '<span style="display:inline-block;font-size:10px;font-weight:700;padding:1px 7px;border-radius:9999px;margin-top:3px;background:' + _dtc[0] + ';color:' + _dtc[1] + ';">' + _dtc[2] + ' ' + _dt + '</span>';
+    if (!d.drug_type) d.drug_type = _dt;
+    var _dtOpts = [
+      ['일반의약품','💊 일반의약품'],['전문의약품','💊 전문의약품'],
+      ['의약외품','🧴 의약외품'],['건강기능식품','🌿 건강기능식품'],
+      ['의료기기','🩺 의료기기'],['화장품','✨ 화장품'],['기타상품','📦 기타상품']
+    ].map(function(o){ return '<option value="'+o[0]+'"'+(o[0]===_dt?' selected':'')+'>'+o[1]+'</option>'; }).join('');
+    var dtSelect = '<select data-dtidx="'+idx+'" onclick="event.stopPropagation()" '
+      + 'onchange="_crawledDrugs[this.dataset.dtidx].drug_type=this.value" '
+      + 'style="margin-top:4px;font-size:11px;font-weight:700;padding:2px 6px;border:1px solid #c4b5fd;border-radius:8px;background:#faf5ff;color:#6d28d9;cursor:pointer;">'
+      + _dtOpts + '</select>';
     info.innerHTML = imgHtml +
       '<div style="flex:1;min-width:0;">' +
         '<div style="font-weight:700;font-size:13px;color:#1e293b;">' + (d.name || '이름없음') + '</div>' +
         '<div style="font-size:11px;color:#64748b;margin:1px 0;">' + (d.manufacturer || '') + (d.category ? ' · ' + d.category : '') + '</div>' +
-        dtBadge +
+        dtSelect +
         taglinePreview +
         '<div style="font-size:11px;color:#94a3b8;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + (d.efficacy || '').slice(0, 60) + ((d.efficacy?.length || 0) > 60 ? '...' : '') + '</div>' +
         notePreview +
