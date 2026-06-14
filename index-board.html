@@ -200,25 +200,23 @@
     </div>
   </div>
 
-  <!-- 제약사 필터 (JS에서 동적 생성) -->
+  <!-- 업체 상위분류 필터 (제약회사 / 건강기능식품 업체 / 기타) -->
   <div class="max-w-5xl mx-auto px-4 pt-3">
+    <div id="mfr-group-row" class="flex gap-2 overflow-x-auto no-scrollbar pb-1">
+      <button class="chip active" style="font-size:11px;padding:4px 12px;" data-mgroup="all" onclick="setMfrGroupFilter('all',this)">🏢 전체</button>
+      <button class="chip" style="font-size:11px;padding:4px 12px;" data-mgroup="제약회사" onclick="setMfrGroupFilter('제약회사',this)">💊 제약회사</button>
+      <button class="chip" style="font-size:11px;padding:4px 12px;" data-mgroup="건강기능식품 업체" onclick="setMfrGroupFilter('건강기능식품 업체',this)">🌿 건강기능식품 업체</button>
+      <button class="chip" style="font-size:11px;padding:4px 12px;" data-mgroup="기타" onclick="setMfrGroupFilter('기타',this)">📦 기타</button>
+    </div>
+  </div>
+
+  <!-- 제약사 필터 (JS에서 동적 생성) -->
+  <div class="max-w-5xl mx-auto px-4 pt-1">
     <div id="mfr-chips-row" class="flex gap-2 overflow-x-auto no-scrollbar pb-1">
       <button class="chip active" data-mfr="all" onclick="setMfrFilter('all',this)">🏪 전체</button>
       <!-- 제약사 칩은 renderMfrChips()가 동적으로 생성 -->
     </div>
-    <!-- 관리자 전용: 제약사별 크롤링 바 -->
-    <div id="mfr-crawl-bar" class="hidden pt-1 pb-0.5">
-      <div class="flex items-center gap-2 overflow-x-auto no-scrollbar">
-        <span class="text-xs text-purple-500 font-bold shrink-0 flex items-center gap-1">
-          🌐 제품 가져오기
-        </span>
-        <div id="mfr-crawl-chips" class="flex gap-1.5"></div>
-        <button onclick="openCrawlModal()" title="직접 URL 입력"
-          class="shrink-0 text-xs px-2.5 py-1 rounded-full border border-dashed border-purple-300 text-purple-400 hover:bg-purple-50 transition-all font-semibold">
-          + URL 직접입력
-        </button>
-      </div>
-    </div>
+    <!-- (제품 가져오기 바 제거됨) -->
   </div>
 
   <!-- 약품 종류 필터 -->
@@ -1225,6 +1223,7 @@ let currentUser = null;
 let currentProfile = null;
 let drugs = [];
 let currentMfr      = 'all';
+let currentMfrGroup = 'all';
 let currentCat      = 'all';
 let currentDrugType = 'all';
 let currentSort = 'downloads';
@@ -1389,12 +1388,14 @@ async function loadVersions(drugId) {
 ══════════════════════════════════════ */
 function getFiltered() {
   const q = searchQuery.toLowerCase();
+  const gmap = currentMfrGroup === 'all' ? null : getMfrGroupMap();
   let list = drugs.filter(d => {
+    const grp   = !gmap || (gmap[d.manufacturer_name] || '기타') === currentMfrGroup;
     const mfr   = currentMfr      === 'all' || d.manufacturer_name === currentMfr;
     const cat   = currentCat      === 'all' || d.category          === currentCat;
     const dtype = currentDrugType === 'all' || (d.drug_type || '일반의약품') === currentDrugType;
     const srch  = !q || d.canonical_name.toLowerCase().includes(q);
-    return mfr && cat && dtype && srch;
+    return grp && mfr && cat && dtype && srch;
   });
   if (currentSort === 'versions')  list = [...list].sort((a,b) => (b.version_count||0)-(a.version_count||0));
   if (currentSort === 'latest')    list = [...list].sort((a,b) => new Date(b.created_at)-new Date(a.created_at));
@@ -2389,12 +2390,50 @@ function _initNdBadges() {
 }
 
 /* ── 제약사 칩 동적 렌더링 ───────────────────────────── */
+// 업체 상위분류 맵: 제품 종류(drug_type)로 자동 분류
+// 의약품 보유 → 제약회사, 건기식만 보유 → 건강기능식품 업체, 그 외/미상 → 기타
+function getMfrGroupMap() {
+  const acc = {};
+  drugs.forEach(function(d){
+    const m = d.manufacturer_name;
+    if (!m) return;
+    if (!acc[m]) acc[m] = { drug:false, hf:false };
+    const dt = d.drug_type || '일반의약품';
+    if (dt === '일반의약품' || dt === '전문의약품') acc[m].drug = true;
+    else if (dt === '건강기능식품') acc[m].hf = true;
+  });
+  const group = {};
+  Object.keys(acc).forEach(function(m){
+    if (m === '기타') group[m] = '기타';
+    else if (acc[m].drug) group[m] = '제약회사';
+    else if (acc[m].hf) group[m] = '건강기능식품 업체';
+    else group[m] = '기타';
+  });
+  return group;
+}
+
+function setMfrGroupFilter(val, btn) {
+  currentMfrGroup = val;
+  currentMfr = 'all'; // 그룹 변경 시 제약사 선택 초기화
+  document.querySelectorAll('[data-mgroup]').forEach(function(b){ b.classList.remove('active'); });
+  if (btn) btn.classList.add('active');
+  renderMfrChips();
+  renderDrugs();
+}
+
 function renderMfrChips() {
   const row = document.getElementById('mfr-chips-row');
   if (!row) return;
 
-  // drugs에 실제로 있는 제약사만 추출 (가나다순)
-  const mfrs = [...new Set(drugs.map(function(d){ return d.manufacturer_name; }).filter(Boolean))].sort(function(a,b){
+  // 상위분류에 맞는 제약사만 추출, 가나다순 + '기타'는 맨 끝
+  const gmap = getMfrGroupMap();
+  let mfrs = [...new Set(drugs.map(function(d){ return d.manufacturer_name; }).filter(Boolean))];
+  if (currentMfrGroup !== 'all') {
+    mfrs = mfrs.filter(function(m){ return (gmap[m] || '기타') === currentMfrGroup; });
+  }
+  mfrs.sort(function(a,b){
+    if (a === '기타' && b !== '기타') return 1;
+    if (b === '기타' && a !== '기타') return -1;
     return a.localeCompare(b, 'ko');
   });
 
@@ -3516,6 +3555,8 @@ function setCrawlTab(tab) {
 
 function openCrawlModal() {
   document.getElementById('crawl-modal').classList.remove('hidden');
+  var _csb = document.getElementById('crawl-start-btn');
+  if (_csb) _csb.textContent = '🔍 분석';
   document.getElementById('crawl-results').classList.add('hidden');
   document.getElementById('crawl-error').classList.add('hidden');
   document.getElementById('crawl-status-box').classList.add('hidden');
